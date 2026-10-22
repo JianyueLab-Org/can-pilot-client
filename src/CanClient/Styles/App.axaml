@@ -1,0 +1,81 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- 业务界面专用样式（呼号、频率、TX/RX 指示灯、面板）。颜色均来自 Tokens.axaml。 -->
+
+  <!-- 面板容器：工具栏、侧栏、底部按钮栏 -->
+  <Style Selector="Border.toolbar">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="{DynamicResource Padding.Toolbar}" />
+  </Style>
+  <Style Selector="Border.sidebar">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+    <Setter Property="BorderThickness" Value="0,0,1,0" />
+  </Style>
+  <Style Selector="Border.footer">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="Padding" Value="12,8" />
+  </Style>
+  <!-- 面板标题条：与标签栏同高，底部分隔线对齐 -->
+  <Style Selector="Border.paneHeader">
+    <Setter Property="Height" Value="{DynamicResource Size.TabStrip}" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+  <Style Selector="Border.paneHeader > TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- 带边框的列表容器 -->
+  <Style Selector="Border.well">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Control}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Control}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Control}" />
+    <Setter Property="Padding" Value="3" />
+  </Style>
+
+  <!-- 呼号 -->
+  <Style Selector="TextBlock.callsign">
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Large}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <!-- 无线电面板 -->
+  <Style Selector="TextBlock.frequency">
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Medium}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Frequency}" />
+  </Style>
+  <Style Selector="Border.indicator">
+    <Setter Property="Width" Value="24" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Hover}" />
+  </Style>
+  <Style Selector="Border.indicator > TextBlock">
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Dim}" />
+  </Style>
+  <Style Selector="Border.indicator.tx.active">
+    <Setter Property="Background" Value="{DynamicResource Brush.Tx}" />
+  </Style>
+  <Style Selector="Border.indicator.rx.active">
+    <Setter Property="Background" Value="{DynamicResource Brush.Rx}" />
+  </Style>
+  <Style Selector="Border.indicator.active > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.OnAccent}" />
+  </Style>
+  <Style Selector="Border.indicator.off">
+    <Setter Property="Opacity" Value="0.35" />
+  </Style>
+</Styles>

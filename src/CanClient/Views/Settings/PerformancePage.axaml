@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.Settings.PerformancePage"
+             x:DataType="vm:SettingsViewModel">
+  <!-- vPilot SettingsPanelPerformance -->
+  <StackPanel Spacing="{DynamicResource Space.Md}">
+    <CheckBox Content="在模拟器中显示网络上的其他航空器" IsChecked="{Binding RenderTraffic}" />
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <TextBlock Text="不显示距离超过" VerticalAlignment="Center" />
+      <NumericUpDown Width="96" Minimum="1" Maximum="200" Increment="1" FormatString="0"
+                     Value="{Binding AircraftVisualRange}" />
+      <TextBlock Text="海里的航空器" VerticalAlignment="Center" />
+    </StackPanel>
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <TextBlock Text="最多显示的航空器数量" VerticalAlignment="Center" />
+      <NumericUpDown Width="96" Minimum="0" Maximum="200" Increment="1" FormatString="0"
+                     Value="{Binding MaxRenderedAircraft}" />
+    </StackPanel>
+  </StackPanel>
+</UserControl>

@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.Settings.CustomRulesPage"
+             x:DataType="vm:SettingsViewModel">
+  <!-- vPilot SettingsPanelCustomRuleSets。AI 包自带的 .vmr 扫描时会自动加进来 -->
+  <StackPanel Spacing="{DynamicResource Space.Sm}">
+    <Button Content="添加自定义规则集..." HorizontalAlignment="Stretch" Click="OnAddClick" />
+    <TextBlock Classes="muted" Margin="0,4,0,0" Text="已安装的自定义规则集（按优先级排列）" />
+    <Border Classes="well" Height="150">
+      <ListBox ItemsSource="{Binding CustomRuleSets}" SelectedItem="{Binding SelectedRuleSet}">
+        <ListBox.ItemTemplate>
+          <DataTemplate DataType="vm:RuleSetItem">
+            <TextBlock Text="{Binding Display}" ToolTip.Tip="{Binding Path}" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Border>
+    <UniformGrid Columns="3" ColumnSpacing="{DynamicResource Space.Sm}">
+      <Button Content="上移" HorizontalAlignment="Stretch" Command="{Binding MoveRuleSetUpCommand}" />
+      <Button Content="下移" HorizontalAlignment="Stretch" Command="{Binding MoveRuleSetDownCommand}" />
+      <Button Content="移除" HorizontalAlignment="Stretch" Command="{Binding RemoveRuleSetCommand}" />
+    </UniformGrid>
+    <TextBlock Classes="caption" TextWrapping="Wrap"
+               Text="扫描模型时，Community 里各个包根目录下的 .vmr（如 FSLTL_Rules.vmr）会自动加入；移除后不会再自动加回来。" />
+  </StackPanel>
+</UserControl>

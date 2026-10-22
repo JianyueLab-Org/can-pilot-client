@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CanClient.Core/CanClient.Core.csproj" />
+    <Project Path="src/CanClient/CanClient.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CanClient.Tests/CanClient.Tests.csproj" />
+    <Project Path="tests/CanClient.UiTests/CanClient.UiTests.csproj" />
+  </Folder>
+</Solution>

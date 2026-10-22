@@ -1,12 +1,16 @@
-﻿build/
+﻿bin/
+obj/
 dist/
-__pycache__/
-*.pyc
+*.user
+.vs/
+TestResults/
+
+# 运行时生成
 msfs_settings.json
 msfs-for-can.log*
-buildinfo.json
-.venv/
-.temp/
+ModelScanResult-*.xml
+
+# RNNoise 由 native/rnnoise/build.ps1 本地构建，不进仓库
 native/rnnoise/work/
 native/rnnoise/out/
 rnnoise.dll

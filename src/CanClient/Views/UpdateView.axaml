@@ -1,0 +1,17 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CanClient.Views.UpdateView"
+             Width="340">
+  <!-- 对应 vPilot UpdateForm：当前版本 / 新版本 / 大小。只提示，下载交给浏览器。 -->
+  <StackPanel Spacing="{DynamicResource Space.Md}">
+    <TextBlock Text="有新版本可用，是否在浏览器里下载？" TextWrapping="Wrap" />
+    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="16" RowSpacing="6">
+      <TextBlock Classes="muted" Text="当前版本" />
+      <TextBlock x:Name="CurrentText" Grid.Column="1" Classes="mono" />
+      <TextBlock Grid.Row="1" Classes="muted" Text="新版本" />
+      <TextBlock x:Name="NewText" Grid.Row="1" Grid.Column="1" Classes="mono" />
+      <TextBlock Grid.Row="2" Classes="muted" Text="大小" />
+      <TextBlock x:Name="SizeText" Grid.Row="2" Grid.Column="1" />
+    </Grid>
+  </StackPanel>
+</UserControl>

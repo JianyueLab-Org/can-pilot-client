@@ -1,0 +1,29 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CanClient.App"
+             RequestedThemeVariant="Dark">
+
+  <!--
+    主题结构：
+      Simple 主题（Avalonia 自带，扁平、跨平台）作为底层；
+      Styles/Theme/Tokens.axaml        设计令牌（颜色 / 字体 / 尺寸 / 圆角），并映射 Simple 主题资源键；
+      Styles/Theme/ControlThemes.axaml 自定义控件主题（按钮、标签页、列表项、导航项）；
+      Styles/Theme/Controls.axaml      其余控件的尺寸与状态样式；
+      Styles/App.axaml                 业务界面样式。
+  -->
+  <Application.Styles>
+    <SimpleTheme />
+    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Simple.xaml" />
+    <StyleInclude Source="avares://msfs-for-can/Styles/Theme/Controls.axaml" />
+    <StyleInclude Source="avares://msfs-for-can/Styles/App.axaml" />
+  </Application.Styles>
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://msfs-for-can/Styles/Theme/Tokens.axaml" />
+        <ResourceInclude Source="avares://msfs-for-can/Styles/Theme/ControlThemes.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

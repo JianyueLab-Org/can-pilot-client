@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.ConnectView"
+             x:DataType="vm:ConnectViewModel"
+             Width="380">
+  <!-- 对应 vPilot ConnectForm：呼号 / 机型代码 / SELCAL 横排，下方观察员模式 -->
+  <StackPanel>
+    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{DynamicResource Space.Md}">
+      <StackPanel>
+        <TextBlock Classes="label" Text="呼号" />
+        <TextBox Classes="mono" Text="{Binding Callsign}" PlaceholderText="CCA1234" MaxLength="12" />
+      </StackPanel>
+      <StackPanel Grid.Column="1">
+        <TextBlock Classes="label" Text="机型代码" />
+        <AutoCompleteBox Classes="mono"
+                         Text="{Binding TypeCode}"
+                         ItemsSource="{Binding TypeCodes}"
+                         FilterMode="StartsWithOrdinal"
+                         PlaceholderText="B738" />
+      </StackPanel>
+      <StackPanel Grid.Column="2">
+        <TextBlock Classes="label" Text="SELCAL 代码" />
+        <TextBox Classes="mono" Text="{Binding Selcal}" PlaceholderText="AB-CD" MaxLength="5" />
+      </StackPanel>
+    </Grid>
+
+    <TextBlock Classes="caption" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Warning}"
+               Text="{Binding Problem}" IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    <CheckBox Margin="0,12,0,0" IsChecked="{Binding IsObserver}" Content="以观察员模式连接（双人机组的右座：只连语音，不上网络）" />
+  </StackPanel>
+</UserControl>

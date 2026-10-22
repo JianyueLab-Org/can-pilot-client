@@ -1,0 +1,151 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:CanClient.ViewModels"
+        xmlns:views="using:CanClient.Views"
+        x:Class="CanClient.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding WindowTitle}"
+        Width="980" Height="440"
+        MinWidth="760" MinHeight="300"
+        WindowDecorations="None"
+        BorderBrush="{DynamicResource Brush.Border.Control}"
+        BorderThickness="1"
+        WindowStartupLocation="CenterScreen">
+
+  <!--
+    布局参考 vPilot FullInterfaceForm：
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ [连接][模式 C][IDENT] | [飞行计划][设置][⋯]  呼号   COM1/COM2  − ✕ │
+    ├───────────────┬──────────────────────────────────────────────────┤
+    │ 范围内管制员   │ 消息 | 私聊标签……                                 │
+    │ (分组树)       │ 消息记录                                          │
+    │               │ 命令行                                            │
+    └───────────────┴──────────────────────────────────────────────────┘
+    不使用系统标题栏：拖动工具栏空白处移动窗口。
+  -->
+  <Panel>
+    <Grid RowDefinitions="Auto,*">
+
+      <!-- ===== 工具栏（兼作拖动区域） ===== -->
+      <Border Classes="toolbar" PointerPressed="OnToolbarPointerPressed">
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource Space.Md}">
+
+          <!-- 按钮与呼号：窗口变窄时自动换行，不会被截断 -->
+          <WrapPanel ItemSpacing="{DynamicResource Space.Sm}" LineSpacing="{DynamicResource Space.Sm}" VerticalAlignment="Center">
+            <Button Classes.primary="{Binding !IsConnected}"
+                    MinWidth="64"
+                    Content="{Binding ConnectButtonText}"
+                    Click="OnConnectClick" />
+            <ToggleButton Content="模式 C" IsChecked="{Binding IsModeC}" />
+            <Button Classes.on="{Binding IsIdent}" Content="IDENT" Command="{Binding IdentCommand}" />
+            <Rectangle Classes="vsep" />
+            <Button Content="飞行计划" Click="OnFlightPlanClick" />
+            <Button Content="设置" Click="OnSettingsClick" />
+            <Button Classes="icon" Content="⋯" ToolTip.Tip="更多">
+              <Button.Flyout>
+                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                  <MenuItem Header="航空器列表" Click="OnAircraftListClick" />
+                  <MenuItem Header="清空当前消息" Click="OnClearMessagesClick" />
+                  <Separator />
+                  <MenuItem Header="检查更新" Click="OnCheckUpdateClick" />
+                  <MenuItem Header="关于" Click="OnAboutClick" />
+                </MenuFlyout>
+              </Button.Flyout>
+            </Button>
+
+            <!-- 呼号（对应 vPilot LblCallsign） -->
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.Sm}" Margin="12,0,0,0" VerticalAlignment="Center">
+              <TextBlock Classes="callsign" Text="{Binding CallsignText}" VerticalAlignment="Center" />
+              <TextBlock Classes="caption mono" Text="{Binding TypeCode}" VerticalAlignment="Center" />
+              <TextBlock Classes="caption" Text="{Binding StatusText}" VerticalAlignment="Center" Margin="8,0,0,0" />
+            </StackPanel>
+          </WrapPanel>
+
+          <!-- COM1 / COM2（对应 vPilot RadioPanelCom1/Com2） -->
+          <StackPanel Grid.Column="1" Width="188" Spacing="2" VerticalAlignment="Center">
+            <views:RadioPanel DataContext="{Binding Com1}" />
+            <views:RadioPanel DataContext="{Binding Com2}" />
+          </StackPanel>
+
+          <!-- 最小化 / 退出（对应 vPilot BtnMinimize / BtnExit） -->
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Top">
+            <Button Classes="ghost icon" Content="—" FontSize="10" ToolTip.Tip="最小化" Click="OnMinimizeClick" />
+            <Button Classes="ghost icon danger" Content="✕" ToolTip.Tip="退出" Click="OnExitClick" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- ===== 主体（对应 vPilot SplitMain） ===== -->
+      <Grid Grid.Row="1" ColumnDefinitions="210,4,*">
+
+        <!-- 范围内管制员（对应 vPilot TreeControllers） -->
+        <Border Classes="sidebar">
+          <DockPanel>
+            <!-- 与右侧标签栏同高，形成同一条分隔线 -->
+            <Border DockPanel.Dock="Top" Classes="paneHeader">
+              <TextBlock Classes="section" Text="范围内管制员" />
+            </Border>
+            <TreeView x:Name="ControllerTree"
+                      ItemsSource="{Binding ControllerGroups}"
+                      DoubleTapped="OnControllerDoubleTapped">
+              <TreeView.DataTemplates>
+                <TreeDataTemplate DataType="vm:ControllerGroup" ItemsSource="{Binding Stations}">
+                  <TextBlock Text="{Binding Header}" Foreground="{DynamicResource Brush.Group}" />
+                </TreeDataTemplate>
+                <DataTemplate DataType="vm:ControllerStation">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Background="Transparent"
+                        ToolTip.Tip="{Binding Tip}">
+                    <Grid.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="发送私聊消息" Click="OnStationChatClick" />
+                        <MenuItem Header="将 COM1 调谐到此频率" Click="OnStationTuneClick" />
+                        <MenuItem Header="请求 ATIS" Click="OnStationAtisClick" />
+                      </ContextMenu>
+                    </Grid.ContextMenu>
+                    <TextBlock Classes="mono" Text="{Binding Callsign}"
+                               FontFamily="{DynamicResource Font.Controllers}" FontSize="{DynamicResource FontSize.Controllers}" />
+                    <TextBlock Grid.Column="1" Classes="mono muted" Text="{Binding Frequency}"
+                               FontFamily="{DynamicResource Font.Controllers}" FontSize="{DynamicResource FontSize.Controllers}" />
+                  </Grid>
+                </DataTemplate>
+              </TreeView.DataTemplates>
+            </TreeView>
+          </DockPanel>
+        </Border>
+
+        <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
+
+        <!-- 消息标签页（对应 vPilot TabsMain） -->
+        <TabControl Grid.Column="2"
+                    ItemsSource="{Binding Tabs}"
+                    SelectedItem="{Binding SelectedTab}">
+          <TabControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ChatTabViewModel">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <!-- 用 TextBlock 显示标题，避免呼号中的下划线被当作快捷键 -->
+                <TextBlock Text="{Binding Header}" VerticalAlignment="Center" />
+                <Button Classes="ghost"
+                        Width="16" Height="16" MinHeight="0" Padding="0"
+                        FontSize="9"
+                        Content="✕"
+                        IsVisible="{Binding IsClosable}"
+                        Click="OnCloseTabClick" />
+              </StackPanel>
+            </DataTemplate>
+          </TabControl.ItemTemplate>
+          <TabControl.ContentTemplate>
+            <DataTemplate x:DataType="vm:ChatTabViewModel">
+              <views:ChatView />
+            </DataTemplate>
+          </TabControl.ContentTemplate>
+        </TabControl>
+      </Grid>
+    </Grid>
+
+    <!-- ===== 对话框遮罩层 ===== -->
+    <Panel x:Name="DialogLayer" Background="{DynamicResource Brush.Bg.Overlay}" IsVisible="False" />
+
+    <!-- ===== 窗口边缘缩放手柄 ===== -->
+    <views:ResizeGrips />
+  </Panel>
+</Window>

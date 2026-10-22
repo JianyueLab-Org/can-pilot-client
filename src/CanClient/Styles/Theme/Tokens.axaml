@@ -1,0 +1,153 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="using:System">
+  <!--
+    设计令牌：颜色、尺寸、字体、圆角集中定义于此。
+    页面与控件主题只引用这里的键，不直接写颜色值。
+    末尾一节把 Avalonia Simple 主题使用的资源键映射到这些令牌上。
+  -->
+
+  <!-- ========== 颜色 ========== -->
+  <!-- 背景层级：App（最底）< Panel（侧栏/工具栏）< Control（输入框/按钮）< Hover < Active -->
+  <Color x:Key="Color.Bg.App">#141518</Color>
+  <Color x:Key="Color.Bg.Panel">#1A1B1F</Color>
+  <Color x:Key="Color.Bg.Control">#212328</Color>
+  <Color x:Key="Color.Bg.Hover">#292B31</Color>
+  <Color x:Key="Color.Bg.Active">#30333A</Color>
+  <Color x:Key="Color.Bg.Overlay">#99000000</Color>
+
+  <Color x:Key="Color.Border">#26282D</Color>
+  <Color x:Key="Color.Border.Control">#34373E</Color>
+  <Color x:Key="Color.Border.Hover">#464A52</Color>
+
+  <Color x:Key="Color.Text">#D5D8DD</Color>
+  <Color x:Key="Color.Text.Muted">#8B9098</Color>
+  <Color x:Key="Color.Text.Dim">#5E636B</Color>
+  <Color x:Key="Color.Text.OnAccent">#FFFFFF</Color>
+
+  <Color x:Key="Color.Accent">#4C8BF5</Color>
+  <Color x:Key="Color.Accent.Hover">#5E98F7</Color>
+  <Color x:Key="Color.Accent.Pressed">#3E7AE0</Color>
+  <Color x:Key="Color.Accent.Subtle">#334C8BF5</Color>
+  <Color x:Key="Color.Accent.Muted">#554C8BF5</Color>
+
+  <Color x:Key="Color.Success">#3DBE84</Color>
+  <Color x:Key="Color.Warning">#D9A441</Color>
+  <Color x:Key="Color.Danger">#E5534B</Color>
+  <Color x:Key="Color.Danger.Hover">#EE6B63</Color>
+  <Color x:Key="Color.Info">#5BC0D8</Color>
+
+  <SolidColorBrush x:Key="Brush.Bg.App" Color="{StaticResource Color.Bg.App}" />
+  <SolidColorBrush x:Key="Brush.Bg.Panel" Color="{StaticResource Color.Bg.Panel}" />
+  <SolidColorBrush x:Key="Brush.Bg.Control" Color="{StaticResource Color.Bg.Control}" />
+  <SolidColorBrush x:Key="Brush.Bg.Hover" Color="{StaticResource Color.Bg.Hover}" />
+  <SolidColorBrush x:Key="Brush.Bg.Active" Color="{StaticResource Color.Bg.Active}" />
+  <SolidColorBrush x:Key="Brush.Bg.Overlay" Color="{StaticResource Color.Bg.Overlay}" />
+  <SolidColorBrush x:Key="Brush.Border" Color="{StaticResource Color.Border}" />
+  <SolidColorBrush x:Key="Brush.Border.Control" Color="{StaticResource Color.Border.Control}" />
+  <SolidColorBrush x:Key="Brush.Border.Hover" Color="{StaticResource Color.Border.Hover}" />
+  <SolidColorBrush x:Key="Brush.Text" Color="{StaticResource Color.Text}" />
+  <SolidColorBrush x:Key="Brush.Text.Muted" Color="{StaticResource Color.Text.Muted}" />
+  <SolidColorBrush x:Key="Brush.Text.Dim" Color="{StaticResource Color.Text.Dim}" />
+  <SolidColorBrush x:Key="Brush.Text.OnAccent" Color="{StaticResource Color.Text.OnAccent}" />
+  <SolidColorBrush x:Key="Brush.Accent" Color="{StaticResource Color.Accent}" />
+  <SolidColorBrush x:Key="Brush.Accent.Hover" Color="{StaticResource Color.Accent.Hover}" />
+  <SolidColorBrush x:Key="Brush.Accent.Pressed" Color="{StaticResource Color.Accent.Pressed}" />
+  <SolidColorBrush x:Key="Brush.Accent.Subtle" Color="{StaticResource Color.Accent.Subtle}" />
+  <SolidColorBrush x:Key="Brush.Accent.Muted" Color="{StaticResource Color.Accent.Muted}" />
+  <SolidColorBrush x:Key="Brush.Success" Color="{StaticResource Color.Success}" />
+  <SolidColorBrush x:Key="Brush.Warning" Color="{StaticResource Color.Warning}" />
+  <SolidColorBrush x:Key="Brush.Danger" Color="{StaticResource Color.Danger}" />
+  <SolidColorBrush x:Key="Brush.Danger.Hover" Color="{StaticResource Color.Danger.Hover}" />
+  <SolidColorBrush x:Key="Brush.Info" Color="{StaticResource Color.Info}" />
+
+  <!-- 业务语义色 -->
+  <SolidColorBrush x:Key="Brush.Frequency" Color="#7CD49B" />
+  <SolidColorBrush x:Key="Brush.Group" Color="{StaticResource Color.Info}" />
+  <StaticResource x:Key="Brush.Tx" ResourceKey="Brush.Danger" />
+  <StaticResource x:Key="Brush.Rx" ResourceKey="Brush.Success" />
+
+  <!-- 消息颜色（按 MessageKind 查找：Brush.Message.{Kind}） -->
+  <StaticResource x:Key="Brush.Message.System" ResourceKey="Brush.Text.Muted" />
+  <StaticResource x:Key="Brush.Message.Radio" ResourceKey="Brush.Text" />
+  <SolidColorBrush x:Key="Brush.Message.RadioDirect" Color="#FFFFFF" />
+  <StaticResource x:Key="Brush.Message.Private" ResourceKey="Brush.Info" />
+  <StaticResource x:Key="Brush.Message.Broadcast" ResourceKey="Brush.Warning" />
+  <SolidColorBrush x:Key="Brush.Message.Server" Color="#E2C766" />
+  <StaticResource x:Key="Brush.Message.Error" ResourceKey="Brush.Danger" />
+  <StaticResource x:Key="Brush.Message.Sent" ResourceKey="Brush.Success" />
+  <StaticResource x:Key="Brush.Message.Time" ResourceKey="Brush.Text.Dim" />
+
+  <!-- ========== 字体 ========== -->
+  <FontFamily x:Key="Font.UI">Microsoft YaHei UI, PingFang SC, Noto Sans CJK SC, Noto Sans SC, Segoe UI, Helvetica Neue, sans-serif</FontFamily>
+  <FontFamily x:Key="Font.Mono">JetBrains Mono, Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, Microsoft YaHei UI, PingFang SC, monospace</FontFamily>
+
+  <!-- 设置里"字体"页可改的两处，运行时在主窗口资源里覆盖 -->
+  <StaticResource x:Key="Font.Messages" ResourceKey="Font.Mono" />
+  <StaticResource x:Key="Font.Controllers" ResourceKey="Font.Mono" />
+  <sys:Double x:Key="FontSize.Messages">12</sys:Double>
+  <sys:Double x:Key="FontSize.Controllers">12</sys:Double>
+
+  <sys:Double x:Key="FontSize.Small">11</sys:Double>
+  <sys:Double x:Key="FontSize.Base">12</sys:Double>
+  <sys:Double x:Key="FontSize.Medium">13</sys:Double>
+  <sys:Double x:Key="FontSize.Large">15</sys:Double>
+
+  <!-- ========== 尺寸 / 间距 / 圆角 ========== -->
+  <sys:Double x:Key="Size.Control">26</sys:Double>
+  <sys:Double x:Key="Size.Control.Small">20</sys:Double>
+  <sys:Double x:Key="Size.TabStrip">30</sys:Double>
+  <sys:Double x:Key="Size.NavItem">28</sys:Double>
+  <sys:Double x:Key="Size.ListItem">24</sys:Double>
+
+  <Thickness x:Key="Padding.Button">10,0</Thickness>
+  <Thickness x:Key="Padding.Input">8,0</Thickness>
+  <Thickness x:Key="Padding.Panel">16,14</Thickness>
+  <Thickness x:Key="Padding.Toolbar">8,6</Thickness>
+
+  <sys:Double x:Key="Space.Xs">4</sys:Double>
+  <sys:Double x:Key="Space.Sm">6</sys:Double>
+  <sys:Double x:Key="Space.Md">10</sys:Double>
+  <sys:Double x:Key="Space.Lg">16</sys:Double>
+
+  <CornerRadius x:Key="Radius.Small">3</CornerRadius>
+  <CornerRadius x:Key="Radius.Control">4</CornerRadius>
+  <CornerRadius x:Key="Radius.Overlay">6</CornerRadius>
+
+  <Thickness x:Key="Border.Thin">1</Thickness>
+
+  <!-- ========== 映射到 Avalonia Simple 主题的资源键 ========== -->
+  <StaticResource x:Key="ContentControlThemeFontFamily" ResourceKey="Font.UI" />
+  <StaticResource x:Key="FontSizeSmall" ResourceKey="FontSize.Small" />
+  <StaticResource x:Key="FontSizeNormal" ResourceKey="FontSize.Base" />
+  <StaticResource x:Key="FontSizeLarge" ResourceKey="FontSize.Large" />
+
+  <StaticResource x:Key="ThemeBackgroundBrush" ResourceKey="Brush.Bg.Control" />
+  <StaticResource x:Key="ThemeBorderLowBrush" ResourceKey="Brush.Border" />
+  <StaticResource x:Key="ThemeBorderMidBrush" ResourceKey="Brush.Border.Control" />
+  <StaticResource x:Key="ThemeBorderHighBrush" ResourceKey="Brush.Border.Hover" />
+  <StaticResource x:Key="ThemeControlLowBrush" ResourceKey="Brush.Bg.Panel" />
+  <StaticResource x:Key="ThemeControlMidBrush" ResourceKey="Brush.Bg.Control" />
+  <StaticResource x:Key="ThemeControlMidHighBrush" ResourceKey="Brush.Border.Control" />
+  <StaticResource x:Key="ThemeControlHighBrush" ResourceKey="Brush.Bg.Active" />
+  <StaticResource x:Key="ThemeControlVeryHighBrush" ResourceKey="Brush.Text.Dim" />
+  <StaticResource x:Key="ThemeControlHighlightLowBrush" ResourceKey="Brush.Bg.Hover" />
+  <StaticResource x:Key="ThemeControlHighlightMidBrush" ResourceKey="Brush.Bg.Hover" />
+  <StaticResource x:Key="ThemeControlHighlightHighBrush" ResourceKey="Brush.Bg.Active" />
+  <StaticResource x:Key="ThemeForegroundBrush" ResourceKey="Brush.Text" />
+  <StaticResource x:Key="ThemeForegroundLowBrush" ResourceKey="Brush.Text.Dim" />
+  <StaticResource x:Key="ThemeAccentBrush" ResourceKey="Brush.Accent" />
+  <StaticResource x:Key="ThemeAccentBrush2" ResourceKey="Brush.Accent.Muted" />
+  <StaticResource x:Key="ThemeAccentBrush3" ResourceKey="Brush.Accent.Muted" />
+  <StaticResource x:Key="ThemeAccentBrush4" ResourceKey="Brush.Accent.Subtle" />
+  <StaticResource x:Key="HighlightBrush" ResourceKey="Brush.Accent" />
+  <StaticResource x:Key="HighlightForegroundBrush" ResourceKey="Brush.Text.OnAccent" />
+  <StaticResource x:Key="ErrorBrush" ResourceKey="Brush.Danger" />
+  <StaticResource x:Key="TitleBarBackgroundBrush" ResourceKey="Brush.Bg.Panel" />
+  <StaticResource x:Key="ThemeBorderThickness" ResourceKey="Border.Thin" />
+
+  <sys:Double x:Key="ThemeDisabledOpacity">0.45</sys:Double>
+  <sys:Double x:Key="TextControlPlaceholderOpacity">1</sys:Double>
+  <sys:Double x:Key="ScrollBarThickness">10</sys:Double>
+  <sys:Double x:Key="ScrollBarThumbThickness">6</sys:Double>
+</ResourceDictionary>

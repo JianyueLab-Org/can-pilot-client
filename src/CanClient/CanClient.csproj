@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 界面：Avalonia 12（Simple 主题打底 + 自定义主题），布局参考 vPilot。业务逻辑都在 CanClient.Core。 -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <AssemblyName>msfs-for-can</AssemblyName>
+    <RootNamespace>CanClient</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Themes.Simple" Version="12.1.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="app.ico" />
+    <ProjectReference Include="..\CanClient.Core\CanClient.Core.csproj" />
+  </ItemGroup>
+
+</Project>

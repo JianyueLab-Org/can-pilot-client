@@ -1,107 +1,62 @@
-# CAN MFS Client · MSFS for CAN
+# MSFS for CAN
 
-[项目仓库](https://github.com/JianyueLab-Org/can-mfs-client)
+CAN 连飞网络的 Microsoft Flight Simulator（2020 / 2024）飞行员客户端，C# / .NET 10 实现。
+界面基于 [can-client-ui](https://github.com/JianyueLab-Org/can-client-ui)（Avalonia，布局参考 vPilot），
+他机模型匹配按 vPilot 的做法实现。
 
-从 [JianyueLab-Org/can-audio](https://github.com/JianyueLab-Org/can-audio) 的
-`msfs/` 提取的独立 Windows 客户端（界面名称 **MSFS for CAN**）。
-支持 Microsoft Flight Simulator 的 SimConnect 连接、CAN FSD 联飞和文字消息、
-Mumble 语音、COM1 频率同步、他机模型匹配与注入、观察员模式，以及键盘/鼠标侧键/摇杆 PTT。
+功能：SimConnect 连接、CAN FSD 联飞与文字消息、Mumble 语音（跟随 COM1 切换 `FREQ_xxxxxx` 频道，
+加密 UDP、不通时退回 TCP 隧道）、他机注入与模型匹配、观察员模式、键盘 / 鼠标侧键 / 摇杆 PTT。
 
 ## 环境
 
-- Windows x64、**Python 3.12 x64**、Git（安装固定提交的语音依赖时使用）。
-- 实际联飞需要启动支持 SimConnect 的 MSFS，准备 CAN 账号，并能访问所选语音/FSD 服务。
-- 无需原 `can-audio` 仓库，无需 X-Plane 插件，也无需在本机部署服务端。
+- Windows x64，[.NET 10 SDK](https://dotnet.microsoft.com/download)。
+- 实际联飞需要启动 MSFS，准备 CAN 账号，并能访问所选语音 / FSD 服务器。
+- 可选：CMake + Visual Studio 2022 Build Tools（C++ 桌面开发），用于构建 RNNoise 麦克风降噪。
 
-## 安装与启动
-
-打开 PowerShell，克隆本仓库并安装依赖：
+## 运行与构建
 
 ```powershell
-git clone https://github.com/JianyueLab-Org/can-mfs-client.git
-cd can-mfs-client
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe run.py
+dotnet run --project src/CanClient          # 从源码运行；加 -- --debug 记录调试日志
+dotnet test CanMfsClient.slnx               # 单元测试 + 界面渲染测试
+pwsh -File build.ps1                        # 构建 RNNoise、跑测试、发布到 dist/msfs-for-can
 ```
 
-`run.py` 自动设置工作目录和 `opus.dll` 搜索路径，也可以用绝对路径从其他目录启动。
-调试日志：`python run.py --debug`（使用已安装依赖的 Python）。
-使用新的虚拟环境，避免旧版 `pymumble` 与 `pymumble-udp` 写入同一个模块目录。
+分发整个 `dist/msfs-for-can/`，入口为 `msfs-for-can.exe`。正式版本号在构建前设置
+`$env:CAN_VERSION = "2.2.36"`；不设置时按开发版显示（报下一个补丁号并标注“开发版”）。
+
+设置保存在程序目录的 `msfs_settings.json`（与旧 Python 版格式兼容，老配置可直接读入），
+日志为 `msfs-for-can.log*`。程序目录不可写时改用 `%LOCALAPPDATA%\MSFS for CAN`。
 
 ## 首次连接
 
-1. 启动 MSFS，进入飞行场景，再启动客户端。
-2. 在设置中选择麦克风、扬声器，并配置键盘、鼠标侧键或摇杆 PTT。
-3. 在「网络」页分别选择语音和 FSD 服务器，或填写自定义地址和端口。
-4. 填写 CAN 账号、密码和呼号，连接网络。
-5. 在模拟器中调整 COM1 频率，客户端会同步切换语音频道；按住 PTT 发话。
+1. 启动 MSFS 进入飞行，再启动客户端。
+2. 设置 → 网络：填写 CID、密码，选择 FSD 和语音服务器；音频、按键通话 (PTT) 按需设置。
+3. 点击“连接”，填写呼号和机型代码。观察员模式只连语音，可以不开模拟器（用 `.com1 121.800` 设频率）。
+4. 在模拟器里调 COM1，语音会跟着切频道；按住 PTT 发话。
 
-需要显示他机时，在设置中选择 MSFS 的飞机包目录（Community / Official 等）
-供模型扫描。观察员模式只连语音，不创建 FSD 飞机；未连接模拟器时可手动设置频率。
+输入 `.help` 查看命令：`.com1` `.com2` `.x` `.chat` `.msg` `.atis` `.metar` `.wallop` `.match` `.clear`。
 
-设置保存到项目目录的 `msfs_settings.json`，日志为 `msfs-for-can.log*`。
-更新检查保留原来的 CAN API 和 `msfs-for-can` 客户端标识。
+## 他机模型匹配（同 vPilot）
 
-## 麦克风降噪
+- **扫描**：从 `UserCfg.opt` 读 `InstalledPackagesPath`（也可在设置里手动指定），读取 Official / Community /
+  Community2024 下每个包的 `layout.json`，取 `SimObjects` 下的 `aircraft.cfg` / `sim.cfg`（支持
+  `[VARIATION] base_container` 涂装包）。结果缓存在 `ModelScanResult-<模拟器>.xml`，飞机装了、删了、改了会自动重扫。
+- **识别**：用 vPilot 的 `data/ModelMatchingData.bin`（一万多个已知模型、ICAO 机型 / 航司表、同族机型）；
+  不在库里的按 `icao_type_designator`、`atc_parking_codes`（以及 `icao_airline`）推导机型和航司。
+- **规则**：自定义规则集（`.vmr`）优先，其次是按包优先级自动生成的规则，最后是默认机内置规则。
+  Community 包里自带的 `.vmr`（如 FSLTL 的 `FSLTL_Rules.vmr`）扫描时自动启用。
+- **匹配**：四轮——航司 + 机型、航司 + 同族机型、机型、同族机型，都没有就用默认模型。
+  模拟器建不出的模型会被拉黑并给该航空器重新匹配。
+- **查看映射**：“⋯ → 航空器列表”显示每架他机的模型、匹配方式和规则来源；设置 → 模型匹配里有匹配测试，
+  消息栏也可以用 `.match <呼号> <机型>`。高级页可按包 / 飞机 / 涂装排除并调整包的优先级。
 
-`opus.dll` 已随源码提供。RNNoise 是可选的原生降噪库，未构建时仍可启动和使用语音，
-但无法启用 RNNoise 降噪。完整功能需安装 **CMake** 和 **Visual Studio 2022
-Build Tools（使用 C++ 的桌面开发，含 Windows SDK）**，然后执行：
+## 目录
 
-```powershell
-pwsh -File native/rnnoise/build.ps1 -Out .
-```
-
-脚本下载并校验固定的 RNNoise v0.2，生成 `rnnoise.dll` 和 `RNNOISE-COPYING`。
-
-## 本地打包
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
-pwsh -File build.ps1
-```
-
-`build.ps1` 先构建 RNNoise，再运行 PyInstaller。也可通过 `-Python <python.exe>`
-指定已安装构建依赖的 Python。若已备好原生库，可直接运行
-`.\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm gui.spec`。
-
-分发整个 **`dist/msfs-for-can/`**，入口为 `msfs-for-can.exe`。
-不要单独复制 EXE，也不要运行 `build/` 中的中间文件。
-打包会包含 `opus.dll`、`SimConnect/SimConnect.dll`，存在时也会包含 RNNoise 及其许可证。
-需要指定正式版本号时，打包前设置 `$env:CAN_VERSION = "2.2.0"`；
-未设置时沿用 `version.py` 的开发版本显示。
-
-## 验证
-
-在根目录执行，使用同一虚拟环境：
-
-```powershell
-$env:PATH = "$PWD;$env:PATH"
-.\.venv\Scripts\python.exe -m unittest discover -v
-.\.venv\Scripts\python.exe smoke_gui.py
-```
-
-测试不需要真实模拟器、服务器或音频设备。原仓库的跨组件副本比较和可选的
-`can-fsd` 源码对照在缺少对应仓库时会跳过；本地客户端行为测试照常运行。
-离屏冒烟测试会创建主窗口及设置等对话框。
-
-## 来源
-
-- 源提交：`81abcbc9eb26d565ed648dcbab5686a5bf3d20db`
-- 提取范围：`msfs/`、`native/rnnoise/`。
-- 运行依赖从上游清单中按客户端需要整理；测试及打包文件已适配独立根目录。
-- 此项目不包含 CI 工作流。源仓库未作修改。
-
-## 目录说明
-
-| 文件 | 用途 |
+| 路径 | 内容 |
 |---|---|
-| `run.py` / `gui.py` | 源码启动入口 / 主界面 |
-| `simlink.py` / `inject.py` | SimConnect 数据读取 / 他机注入 |
-| `voice.py` / `fsdpilot.py` | Mumble 语音 / FSD 联飞协议 |
-| `settings.py` / `i18n.py` | 配置持久化 / 中英文界面 |
-| `requirements.txt` | 客户端运行依赖 |
-| `build.ps1` / `gui.spec` | 本地完整构建 / PyInstaller 配置 |
-| `native/rnnoise/` | 固定版本的 RNNoise 构建脚本 |
-| `test_*.py` / `smoke_gui.py` | 单元测试 / 离屏界面验证 |
+| `src/CanClient.Core/` | 业务逻辑：FSD（`Fsd/`）、Mumble 语音（`Voice/`）、SimConnect 与他机注入（`Sim/`）、运动模型（`Traffic/`）、模型匹配（`ModelMatching/`）、PTT、设置 |
+| `src/CanClient/` | Avalonia 界面（主题令牌在 `Styles/Theme/Tokens.axaml`） |
+| `tests/CanClient.Tests/` | 单元测试（协议、加密、高度、模型扫描与匹配；有 MSFS 时另扫一遍真实安装） |
+| `tests/CanClient.UiTests/` | 无头渲染各窗口和设置页，截图在 `bin/.../screens` |
+| `native/` | `SimConnect.dll`、`opus.dll`，以及 RNNoise 构建脚本 |
+| `data/ModelMatchingData.bin` | vPilot 的模型匹配数据 |

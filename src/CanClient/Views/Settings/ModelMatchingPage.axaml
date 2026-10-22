@@ -1,0 +1,47 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.Settings.ModelMatchingPage"
+             x:DataType="vm:SettingsViewModel">
+  <!-- vPilot SettingsPanelModelMatching，加上包目录、数据库信息和匹配测试 -->
+  <StackPanel Spacing="{DynamicResource Space.Sm}">
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <TextBlock Classes="muted" Text="模拟器" />
+      <TextBlock Text="{Binding SimulatorName}" FontWeight="SemiBold" />
+    </StackPanel>
+    <TextBlock Classes="caption" Text="{Binding PackagesInfo}" TextWrapping="Wrap" />
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <TextBlock Classes="muted" Text="上次扫描时间" />
+      <TextBlock Text="{Binding LastModelScan}" />
+    </StackPanel>
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <TextBlock Classes="muted" Text="扫描结果" VerticalAlignment="Center" />
+      <TextBlock Text="{Binding ModelsFound}" VerticalAlignment="Center" />
+      <Button Content="重新扫描..." Margin="6,0,0,0" Command="{Binding RescanCommand}" IsEnabled="{Binding !IsScanning}" />
+    </StackPanel>
+    <ProgressBar Value="{Binding ScanPercent}" Maximum="100" Height="4" MinHeight="4" IsVisible="{Binding IsScanning}" />
+    <TextBlock Classes="caption" Text="{Binding ScanProgressText}" TextWrapping="Wrap" />
+    <TextBlock Classes="caption" Text="{Binding DataInfo}" TextWrapping="Wrap" />
+
+    <TextBlock Classes="label" Margin="0,6,0,0" TextWrapping="Wrap" Text="找不到合适的模型时，使用此模型显示航空器" />
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <TextBox Width="280" Classes="mono" Text="{Binding DefaultModel}" />
+      <Button Content="重置" Command="{Binding ResetDefaultModelCommand}" />
+    </StackPanel>
+
+    <TextBlock Classes="label" Margin="0,6,0,0" TextWrapping="Wrap"
+               Text="MSFS 包目录（含 Official 和 Community 的那一层，留空则读 UserCfg.opt）" />
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <TextBox Width="280" Classes="mono" Text="{Binding PackagesPath}" PlaceholderText="自动" />
+      <Button Content="浏览..." Click="OnBrowseClick" />
+    </StackPanel>
+
+    <TextBlock Classes="label" Margin="0,6,0,0" Text="匹配测试" />
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <TextBox Width="110" Classes="mono" Text="{Binding MatchTestCallsign}" PlaceholderText="呼号" />
+      <TextBox Width="70" Classes="mono" Text="{Binding MatchTestType}" PlaceholderText="机型" />
+      <Button Content="测试" Command="{Binding TestMatchCommand}" />
+    </StackPanel>
+    <SelectableTextBlock Classes="mono" Text="{Binding MatchTestResult}" TextWrapping="Wrap" />
+  </StackPanel>
+</UserControl>

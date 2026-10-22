@@ -1,0 +1,13 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.Settings.MiscPage"
+             x:DataType="vm:SettingsViewModel">
+  <!-- vPilot SettingsPanelMiscellaneous -->
+  <StackPanel>
+    <CheckBox Content="起飞时自动将应答机切换到模式 C" IsChecked="{Binding AutoSquawkModeC}" />
+    <CheckBox Content="保持窗口可见" IsChecked="{Binding KeepWindowVisible}" />
+    <CheckBox Content="记录调试日志" IsChecked="{Binding DebugLog}" />
+    <Button Margin="0,8,0,0" Content="打开日志所在文件夹" Command="{Binding OpenLogFolderCommand}" />
+  </StackPanel>
+</UserControl>

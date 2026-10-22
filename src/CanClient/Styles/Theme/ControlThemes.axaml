@@ -1,0 +1,290 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    扁平控件主题：替换 Simple 主题中的 Button / ToggleButton / ListBoxItem / TabControl / TabItem，
+    并提供设置页左侧导航用的 NavItemTheme。所有取值都来自 Tokens.axaml。
+
+    按钮变体（Classes）：
+      primary  主操作（强调色填充）
+      ghost    无边框、透明背景（工具栏次要操作、窗口按钮）
+      danger   悬停时显示为危险色（退出、删除）
+      icon     正方形图标按钮
+      on       激活状态（如 IDENT 进行中）
+  -->
+
+  <!-- ========== Button ========== -->
+  <ControlTheme x:Key="{x:Type Button}" TargetType="Button">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Control}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Control}" />
+    <Setter Property="BorderThickness" Value="{DynamicResource Border.Thin}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Control}" />
+    <Setter Property="Padding" Value="{DynamicResource Padding.Button}" />
+    <Setter Property="MinHeight" Value="{DynamicResource Size.Control}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Base}" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <ContentPresenter Name="PART_ContentPresenter"
+                          Padding="{TemplateBinding Padding}"
+                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                          Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}"
+                          BorderThickness="{TemplateBinding BorderThickness}"
+                          CornerRadius="{TemplateBinding CornerRadius}"
+                          Content="{TemplateBinding Content}"
+                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                          Foreground="{TemplateBinding Foreground}"
+                          RecognizesAccessKey="True" />
+      </ControlTemplate>
+    </Setter>
+
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Bg.Hover}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Hover}" />
+    </Style>
+    <Style Selector="^:pressed">
+      <Setter Property="Background" Value="{DynamicResource Brush.Bg.Active}" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Opacity" Value="{DynamicResource ThemeDisabledOpacity}" />
+    </Style>
+
+    <Style Selector="^.primary">
+      <Setter Property="Background" Value="{DynamicResource Brush.Accent}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.OnAccent}" />
+      <Style Selector="^:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Brush.Accent.Hover}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Hover}" />
+      </Style>
+      <Style Selector="^:pressed">
+        <Setter Property="Background" Value="{DynamicResource Brush.Accent.Pressed}" />
+      </Style>
+    </Style>
+
+    <Style Selector="^.ghost">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Muted}" />
+      <Style Selector="^:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Brush.Bg.Hover}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+      </Style>
+    </Style>
+
+    <Style Selector="^.danger:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Danger}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Danger}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.OnAccent}" />
+    </Style>
+
+    <Style Selector="^.on">
+      <Setter Property="Background" Value="{DynamicResource Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Hover}" />
+    </Style>
+
+    <Style Selector="^.icon">
+      <Setter Property="Width" Value="{DynamicResource Size.Control}" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+  </ControlTheme>
+
+  <!-- ========== ToggleButton ========== -->
+  <ControlTheme x:Key="{x:Type ToggleButton}" TargetType="ToggleButton">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Control}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Control}" />
+    <Setter Property="BorderThickness" Value="{DynamicResource Border.Thin}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Control}" />
+    <Setter Property="Padding" Value="{DynamicResource Padding.Button}" />
+    <Setter Property="MinHeight" Value="{DynamicResource Size.Control}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Base}" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <ContentPresenter Name="PART_ContentPresenter"
+                          Padding="{TemplateBinding Padding}"
+                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                          Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}"
+                          BorderThickness="{TemplateBinding BorderThickness}"
+                          CornerRadius="{TemplateBinding CornerRadius}"
+                          Content="{TemplateBinding Content}"
+                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                          Foreground="{TemplateBinding Foreground}"
+                          RecognizesAccessKey="True" />
+      </ControlTemplate>
+    </Setter>
+
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Bg.Hover}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Hover}" />
+    </Style>
+    <Style Selector="^:pressed">
+      <Setter Property="Background" Value="{DynamicResource Brush.Bg.Active}" />
+    </Style>
+    <Style Selector="^:checked">
+      <Setter Property="Background" Value="{DynamicResource Brush.Accent.Subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Hover}" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Opacity" Value="{DynamicResource ThemeDisabledOpacity}" />
+    </Style>
+  </ControlTheme>
+
+  <!-- ========== ListBoxItem ========== -->
+  <ControlTheme x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="MinHeight" Value="{DynamicResource Size.ListItem}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <ContentPresenter Name="PART_ContentPresenter"
+                          Padding="{TemplateBinding Padding}"
+                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                          Background="{TemplateBinding Background}"
+                          CornerRadius="{TemplateBinding CornerRadius}"
+                          Content="{TemplateBinding Content}"
+                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                          Foreground="{TemplateBinding Foreground}" />
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Bg.Hover}" />
+    </Style>
+    <Style Selector="^:selected">
+      <Setter Property="Background" Value="{DynamicResource Brush.Accent.Subtle}" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Opacity" Value="{DynamicResource ThemeDisabledOpacity}" />
+    </Style>
+  </ControlTheme>
+
+  <!-- ========== 设置页左侧导航项 ========== -->
+  <ControlTheme x:Key="NavItemTheme" TargetType="ListBoxItem">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Muted}" />
+    <Setter Property="Padding" Value="14,0" />
+    <Setter Property="MinHeight" Value="{DynamicResource Size.NavItem}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel Background="{TemplateBinding Background}">
+          <Border Name="indicator"
+                  Width="2"
+                  HorizontalAlignment="Left"
+                  Background="{DynamicResource Brush.Accent}"
+                  IsVisible="False" />
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Padding="{TemplateBinding Padding}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^.child">
+      <Setter Property="Padding" Value="28,0,14,0" />
+    </Style>
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Bg.Hover}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+    </Style>
+    <Style Selector="^:selected">
+      <Setter Property="Background" Value="{DynamicResource Brush.Bg.Active}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+      <Style Selector="^ /template/ Border#indicator">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+    </Style>
+  </ControlTheme>
+
+  <!-- ========== TabControl / TabItem（编辑器式标签栏） ========== -->
+  <ControlTheme x:Key="{x:Type TabControl}" TargetType="TabControl">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="ItemsPanel">
+      <ItemsPanelTemplate>
+        <StackPanel Orientation="Horizontal" />
+      </ItemsPanelTemplate>
+    </Setter>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <DockPanel Background="{TemplateBinding Background}">
+          <Border DockPanel.Dock="Top"
+                  Height="{DynamicResource Size.TabStrip}"
+                  Background="{DynamicResource Brush.Bg.Panel}"
+                  BorderBrush="{DynamicResource Brush.Border}"
+                  BorderThickness="0,0,0,1">
+            <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+              <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+            </ScrollViewer>
+          </Border>
+          <Panel ClipToBounds="True">
+            <ContentPresenter Name="PART_SelectedContentHost2"
+                              Margin="{TemplateBinding Padding}"
+                              HorizontalContentAlignment="Stretch"
+                              VerticalContentAlignment="Stretch"
+                              IsVisible="False" />
+            <ContentPresenter Name="PART_SelectedContentHost"
+                              Margin="{TemplateBinding Padding}"
+                              HorizontalContentAlignment="Stretch"
+                              VerticalContentAlignment="Stretch" />
+          </Panel>
+        </DockPanel>
+      </ControlTemplate>
+    </Setter>
+  </ControlTheme>
+
+  <ControlTheme x:Key="{x:Type TabItem}" TargetType="TabItem">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Muted}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Base}" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel Background="{TemplateBinding Background}">
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Padding="{TemplateBinding Padding}"
+                            VerticalAlignment="Stretch"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                            Content="{TemplateBinding Header}"
+                            ContentTemplate="{TemplateBinding HeaderTemplate}"
+                            Foreground="{TemplateBinding Foreground}" />
+          <Border Name="indicator"
+                  Height="2"
+                  VerticalAlignment="Bottom"
+                  Background="{DynamicResource Brush.Accent}"
+                  IsVisible="False" />
+          <Border Width="1"
+                  HorizontalAlignment="Right"
+                  Background="{DynamicResource Brush.Border}" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+    </Style>
+    <Style Selector="^:selected">
+      <Setter Property="Background" Value="{DynamicResource Brush.Bg.App}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+      <Style Selector="^ /template/ Border#indicator">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

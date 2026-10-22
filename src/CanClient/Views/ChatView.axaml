@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             xmlns:conv="using:CanClient.Converters"
+             x:Class="CanClient.Views.ChatView"
+             x:DataType="vm:ChatTabViewModel">
+  <!-- 对应 vPilot TabPageMessages：上方消息记录（RtfMessages），下方命令行（TxtCommandLine） -->
+  <Grid RowDefinitions="*,Auto">
+    <ScrollViewer x:Name="MessageScroller"
+                  Padding="12,8"
+                  HorizontalScrollBarVisibility="Disabled">
+      <ItemsControl ItemsSource="{Binding Messages}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ChatMessage">
+            <SelectableTextBlock Classes="mono"
+                                 FontFamily="{DynamicResource Font.Messages}"
+                                 FontSize="{DynamicResource FontSize.Messages}"
+                                 TextWrapping="Wrap"
+                                 Foreground="{Binding Kind, Converter={x:Static conv:MessageKindToBrushConverter.Instance}}">
+              <!-- Run 写在同一行，避免换行产生多余空格 -->
+              <Run Text="{Binding TimeText, StringFormat='{}{0}  '}" Foreground="{DynamicResource Brush.Message.Time}" /><Run Text="{Binding SenderPrefix}" FontWeight="SemiBold" /><Run Text="{Binding Text}" />
+            </SelectableTextBlock>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <Border Grid.Row="1" Classes="footer" Padding="8">
+      <TextBox Classes="mono"
+               TextWrapping="Wrap"
+               MaxHeight="96"
+               Text="{Binding Input}"
+               PlaceholderText="{Binding Placeholder}">
+        <TextBox.KeyBindings>
+          <KeyBinding Gesture="Enter" Command="{Binding SubmitCommand}" />
+        </TextBox.KeyBindings>
+      </TextBox>
+    </Border>
+  </Grid>
+</UserControl>

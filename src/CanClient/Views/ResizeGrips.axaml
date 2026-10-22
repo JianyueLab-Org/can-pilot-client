@@ -1,0 +1,20 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CanClient.Views.ResizeGrips">
+  <!-- 无系统边框窗口的边缘缩放手柄（跨平台通用）。放在窗口根面板的最上层。 -->
+  <UserControl.Styles>
+    <Style Selector="Border">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+  </UserControl.Styles>
+  <Panel>
+    <Border Tag="North" Height="4" VerticalAlignment="Top" Cursor="TopSide" PointerPressed="OnPointerPressed" />
+    <Border Tag="South" Height="4" VerticalAlignment="Bottom" Cursor="BottomSide" PointerPressed="OnPointerPressed" />
+    <Border Tag="West" Width="4" HorizontalAlignment="Left" Cursor="LeftSide" PointerPressed="OnPointerPressed" />
+    <Border Tag="East" Width="4" HorizontalAlignment="Right" Cursor="RightSide" PointerPressed="OnPointerPressed" />
+    <Border Tag="NorthWest" Width="8" Height="8" HorizontalAlignment="Left" VerticalAlignment="Top" Cursor="TopLeftCorner" PointerPressed="OnPointerPressed" />
+    <Border Tag="NorthEast" Width="8" Height="8" HorizontalAlignment="Right" VerticalAlignment="Top" Cursor="TopRightCorner" PointerPressed="OnPointerPressed" />
+    <Border Tag="SouthWest" Width="8" Height="8" HorizontalAlignment="Left" VerticalAlignment="Bottom" Cursor="BottomLeftCorner" PointerPressed="OnPointerPressed" />
+    <Border Tag="SouthEast" Width="8" Height="8" HorizontalAlignment="Right" VerticalAlignment="Bottom" Cursor="BottomRightCorner" PointerPressed="OnPointerPressed" />
+  </Panel>
+</UserControl>

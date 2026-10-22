@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.FlightPlanView"
+             x:DataType="vm:FlightPlanViewModel"
+             Width="560">
+  <StackPanel>
+    <Grid ColumnDefinitions="1.4*,*,*,*" ColumnSpacing="{DynamicResource Space.Md}">
+      <StackPanel>
+        <TextBlock Classes="label" Text="飞行规则" />
+        <ComboBox ItemsSource="{Binding FlightRules}" SelectedIndex="{Binding FlightRuleIndex}" HorizontalAlignment="Stretch" />
+      </StackPanel>
+      <StackPanel Grid.Column="1">
+        <TextBlock Classes="label" Text="起飞机场" />
+        <TextBox Classes="mono" Text="{Binding Departure}" MaxLength="4" />
+      </StackPanel>
+      <StackPanel Grid.Column="2">
+        <TextBlock Classes="label" Text="目的机场" />
+        <TextBox Classes="mono" Text="{Binding Arrival}" MaxLength="4" />
+      </StackPanel>
+      <StackPanel Grid.Column="3">
+        <TextBlock Classes="label" Text="备降机场" />
+        <TextBox Classes="mono" Text="{Binding Alternate}" MaxLength="4" />
+      </StackPanel>
+    </Grid>
+
+    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{DynamicResource Space.Md}">
+      <StackPanel>
+        <TextBlock Classes="label" Text="机型 / 尾流" />
+        <TextBox Classes="mono" Text="{Binding AircraftType}" />
+      </StackPanel>
+      <StackPanel Grid.Column="1">
+        <TextBlock Classes="label" Text="巡航真空速（节）" />
+        <NumericUpDown Value="{Binding CruiseSpeed}" Minimum="0" Maximum="999" FormatString="0" />
+      </StackPanel>
+      <StackPanel Grid.Column="2">
+        <TextBlock Classes="label" Text="巡航高度层" />
+        <TextBox Classes="mono" Text="{Binding CruiseAltitude}" PlaceholderText="S0980 / FL331" />
+      </StackPanel>
+    </Grid>
+
+    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{DynamicResource Space.Md}">
+      <StackPanel>
+        <TextBlock Classes="label" Text="预计撤轮挡（UTC）" />
+        <TextBox Classes="mono" Text="{Binding DepartureTime}" PlaceholderText="HHMM" MaxLength="4" />
+      </StackPanel>
+      <StackPanel Grid.Column="1">
+        <TextBlock Classes="label" Text="预计航路时间" />
+        <TextBox Classes="mono" Text="{Binding EnrouteTime}" PlaceholderText="HHMM" MaxLength="4" />
+      </StackPanel>
+      <StackPanel Grid.Column="2">
+        <TextBlock Classes="label" Text="续航时间" />
+        <TextBox Classes="mono" Text="{Binding FuelTime}" PlaceholderText="HHMM" MaxLength="4" />
+      </StackPanel>
+    </Grid>
+
+    <TextBlock Classes="label" Text="航路" />
+    <TextBox Classes="mono" Text="{Binding Route}" AcceptsReturn="True" TextWrapping="Wrap" Height="60" VerticalContentAlignment="Top" />
+
+    <TextBlock Classes="label" Text="备注" />
+    <TextBox Classes="mono" Text="{Binding Remarks}" AcceptsReturn="True" TextWrapping="Wrap" Height="44" VerticalContentAlignment="Top" />
+  </StackPanel>
+</UserControl>

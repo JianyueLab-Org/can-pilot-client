@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    客户端的全部业务逻辑：FSD、Mumble 语音、SimConnect、他机运动模型、模型匹配、PTT、设置。
+    不引用任何界面库，单元测试直接引用这个项目。
+  -->
+  <PropertyGroup>
+    <RootNamespace>CanClient.Core</RootNamespace>
+    <AssemblyName>CanClient.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.31.1" />
+    <PackageReference Include="Grpc.Tools" Version="2.72.0" PrivateAssets="all" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Voice\Proto\Mumble.proto" GrpcServices="None" Access="Internal" />
+    <Protobuf Include="Voice\Proto\MumbleUDP.proto" GrpcServices="None" Access="Internal" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>CanReleaseBuild</_Parameter1>
+      <_Parameter2>$(CanReleaseBuild)</_Parameter2>
+    </AssemblyAttribute>
+    <InternalsVisibleTo Include="CanClient.Tests" />
+  </ItemGroup>
+
+  <!-- 原生库和模型匹配数据随输出目录一起走，打包时保留整个目录。 -->
+  <ItemGroup>
+    <None Include="..\..\native\SimConnect.dll" Link="SimConnect.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\native\opus.dll" Link="opus.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\rnnoise.dll" Link="rnnoise.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\rnnoise.dll')" />
+    <None Include="..\..\RNNOISE-COPYING" Link="RNNOISE-COPYING" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\RNNOISE-COPYING')" />
+    <None Include="..\..\data\ModelMatchingData.bin" Link="ModelMatchingData.bin" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

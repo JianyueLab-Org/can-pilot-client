@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.Settings.NetworkPage"
+             x:DataType="vm:SettingsViewModel">
+  <!-- vPilot SettingsPanelNetwork；CAN 的 FSD 和语音是两台服务器，各选一个 -->
+  <StackPanel>
+    <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource Space.Md}">
+      <StackPanel>
+        <TextBlock Classes="label" Text="CID" />
+        <TextBox Classes="mono" Text="{Binding NetworkLogin}" />
+      </StackPanel>
+      <StackPanel Grid.Column="1">
+        <TextBlock Classes="label" Text="密码" />
+        <TextBox Text="{Binding NetworkPassword}" PasswordChar="●" />
+      </StackPanel>
+    </Grid>
+    <CheckBox Margin="0,6,0,0" Content="记住密码（保存在程序目录的配置文件里）" IsChecked="{Binding RememberPassword}" />
+    <TextBlock Classes="label" Text="您的全名" />
+    <TextBox Text="{Binding FullName}" Width="200" HorizontalAlignment="Left" />
+
+    <TextBlock Classes="label" Text="FSD 服务器" />
+    <ComboBox ItemsSource="{Binding FsdServers}" SelectedItem="{Binding SelectedFsdServer}" HorizontalAlignment="Stretch" />
+    <Grid ColumnDefinitions="*,96" ColumnSpacing="{DynamicResource Space.Sm}" Margin="0,4,0,0">
+      <TextBox Classes="mono" Text="{Binding FsdHost}" PlaceholderText="地址" />
+      <NumericUpDown Grid.Column="1" Minimum="1" Maximum="65535" FormatString="0" Value="{Binding FsdPort}" />
+    </Grid>
+
+    <TextBlock Classes="label" Text="语音服务器" />
+    <ComboBox ItemsSource="{Binding VoiceServers}" SelectedItem="{Binding SelectedVoiceServer}" HorizontalAlignment="Stretch" />
+    <Grid ColumnDefinitions="*,96" ColumnSpacing="{DynamicResource Space.Sm}" Margin="0,4,0,0">
+      <TextBox Classes="mono" Text="{Binding VoiceHost}" PlaceholderText="地址" />
+      <NumericUpDown Grid.Column="1" Minimum="1" Maximum="65535" FormatString="0" Value="{Binding VoicePort}" />
+    </Grid>
+    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+      <Button Content="刷新列表" Command="{Binding RefreshServersCommand}" />
+      <TextBlock Classes="caption" VerticalAlignment="Center" Text="{Binding ServerStatus}" />
+    </StackPanel>
+  </StackPanel>
+</UserControl>

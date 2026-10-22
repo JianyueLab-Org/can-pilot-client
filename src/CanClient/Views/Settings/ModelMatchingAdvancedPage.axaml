@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.Settings.ModelMatchingAdvancedPage"
+             x:DataType="vm:SettingsViewModel">
+  <!-- vPilot SettingsPanelAdvancedModelMatching：包 → 飞机目录 → 涂装，后面标出识别状态 -->
+  <StackPanel Spacing="6">
+    <TextBlock Classes="caption" TextWrapping="Wrap" LineHeight="17"
+               Text="取消勾选包、飞机或涂装旁的复选框，可使其不参与自动匹配。涂装后面标着识别结果：已知（在模型库里）、推导（从 aircraft.cfg 推出机型/航司）、未识别、忽略。&#10;用列表下方的按钮上下移动顶层的包，设置匹配优先级（自定义规则集始终优先）。" />
+    <Border Classes="well" Height="300">
+      <TreeView ItemsSource="{Binding ModelFolders}" SelectedItem="{Binding SelectedModelFolder}">
+        <TreeView.ItemTemplate>
+          <TreeDataTemplate DataType="vm:ModelFolderNode" ItemsSource="{Binding Children}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}" MinHeight="22" />
+              <TextBlock Classes="caption" Text="{Binding Detail}" VerticalAlignment="Center" />
+            </StackPanel>
+          </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+      </TreeView>
+    </Border>
+    <UniformGrid Columns="2" ColumnSpacing="{DynamicResource Space.Sm}">
+      <Button Content="上移" HorizontalAlignment="Stretch" Command="{Binding MoveFolderUpCommand}" />
+      <Button Content="下移" HorizontalAlignment="Stretch" Command="{Binding MoveFolderDownCommand}" />
+    </UniformGrid>
+  </StackPanel>
+</UserControl>

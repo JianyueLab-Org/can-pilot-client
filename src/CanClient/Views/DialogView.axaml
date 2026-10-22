@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CanClient.Views.DialogView"
+             HorizontalAlignment="Center"
+             VerticalAlignment="Center">
+  <!-- 窗口内模态对话框卡片：标题 / 内容 / 底部按钮。由 MainWindow 的遮罩层承载，跨平台外观一致。 -->
+  <Border Background="{DynamicResource Brush.Bg.Panel}"
+          BorderBrush="{DynamicResource Brush.Border.Control}"
+          BorderThickness="1"
+          CornerRadius="{DynamicResource Radius.Overlay}"
+          MinWidth="320"
+          ClipToBounds="True">
+    <Grid RowDefinitions="Auto,*,Auto">
+      <!-- 标题区与窗口标题栏同一样式 -->
+      <Border Classes="toolbar" Padding="16,0" Height="34">
+        <TextBlock x:Name="TitleText" FontWeight="SemiBold" VerticalAlignment="Center" />
+      </Border>
+
+      <ContentPresenter x:Name="BodyPresenter" Grid.Row="1" Margin="16,14,16,16" />
+
+      <Border Grid.Row="2" Classes="footer">
+        <DockPanel>
+        <TextBlock x:Name="MessageText" DockPanel.Dock="Top" Margin="0,0,0,8" MaxWidth="460" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Brush.Danger}" IsVisible="False" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="{DynamicResource Space.Sm}">
+          <Button x:Name="SecondaryButton" MinWidth="72" Click="OnSecondaryClick" />
+          <Button x:Name="CloseButton" MinWidth="72" Click="OnCloseClick" />
+          <Button x:Name="PrimaryButton" Classes="primary" MinWidth="72" Click="OnPrimaryClick" />
+        </StackPanel>
+        </DockPanel>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>

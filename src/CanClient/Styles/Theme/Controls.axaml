@@ -1,0 +1,235 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Simple 主题控件的统一外观（尺寸、圆角、悬停/焦点/选中状态）与通用文字样式。
+    颜色只引用 Tokens.axaml 中的令牌。
+  -->
+
+  <!-- ========== 窗口与文字 ========== -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.App}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.UI}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Base}" />
+  </Style>
+
+  <!-- 次要说明文字 -->
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Muted}" />
+  </Style>
+  <!-- 小号说明文字 -->
+  <Style Selector="TextBlock.caption">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Muted}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Small}" />
+  </Style>
+  <!-- 面板小标题 -->
+  <Style Selector="TextBlock.section">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Muted}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Small}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <!-- 表单字段标签 -->
+  <Style Selector="TextBlock.label">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Muted}" />
+    <Setter Property="Margin" Value="0,10,0,4" />
+  </Style>
+  <Style Selector="TextBlock.label:nth-child(1)">
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+  <Style Selector="TextBlock.mono, SelectableTextBlock.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
+  </Style>
+  <Style Selector="TextBox.mono, AutoCompleteBox.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
+  </Style>
+
+  <!-- 分隔线 -->
+  <Style Selector="Rectangle.vsep">
+    <Setter Property="Width" Value="1" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Margin" Value="4,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Fill" Value="{DynamicResource Brush.Border.Control}" />
+  </Style>
+
+  <!-- ========== TextBox ========== -->
+  <Style Selector="TextBox">
+    <Setter Property="MinHeight" Value="{DynamicResource Size.Control}" />
+    <Setter Property="Padding" Value="{DynamicResource Padding.Input}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Control}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Control}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Control}" />
+    <Setter Property="PlaceholderForeground" Value="{DynamicResource Brush.Text.Dim}" />
+    <Setter Property="SelectionBrush" Value="{DynamicResource Brush.Accent.Muted}" />
+    <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Brush.Text}" />
+  </Style>
+  <Style Selector="TextBox[AcceptsReturn=True], TextBox[TextWrapping=Wrap]">
+    <Setter Property="Padding" Value="8,4" />
+  </Style>
+  <Style Selector="TextBox:focus /template/ Border#border">
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+  </Style>
+
+  <!-- ========== ComboBox ========== -->
+  <Style Selector="ComboBox">
+    <Setter Property="MinHeight" Value="{DynamicResource Size.Control}" />
+    <Setter Property="Padding" Value="{DynamicResource Padding.Input}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Control}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Control}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Control}" />
+  </Style>
+  <Style Selector="ComboBox:focus /template/ Border#border, ComboBox:dropdownopen /template/ Border#border">
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+  </Style>
+  <Style Selector="ComboBox /template/ ToggleButton#toggle">
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <Style Selector="ComboBox /template/ Popup#PART_Popup > Border">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Panel}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Control}" />
+    <Setter Property="Padding" Value="3" />
+  </Style>
+  <Style Selector="ComboBoxItem">
+    <Setter Property="MinHeight" Value="{DynamicResource Size.ListItem}" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ComboBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
+  </Style>
+
+  <!-- ========== NumericUpDown ========== -->
+  <Style Selector="NumericUpDown">
+    <Setter Property="MinHeight" Value="{DynamicResource Size.Control}" />
+    <Setter Property="Height" Value="{DynamicResource Size.Control}" />
+    <!-- 内部 TextBox 的 Padding 由此模板绑定传入 -->
+    <Setter Property="Padding" Value="{DynamicResource Padding.Input}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Control}" />
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Control}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Control}" />
+  </Style>
+  <Style Selector="NumericUpDown /template/ ButtonSpinner RepeatButton">
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="6,0" />
+  </Style>
+  <Style Selector="NumericUpDown /template/ TextBox#PART_TextBox">
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="8,0" />
+  </Style>
+  <Style Selector="NumericUpDown:focus-within /template/ ButtonSpinner /template/ Border#border">
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+  </Style>
+
+  <!-- ========== CheckBox ========== -->
+  <Style Selector="CheckBox">
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="Padding" Value="8,0,0,0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Control}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Hover}" />
+  </Style>
+  <!-- 勾选标记由模板固定为强调色，因此选中态用浅色底 + 强调色描边 -->
+  <Style Selector="CheckBox:checked /template/ Border#border">
+    <Setter Property="Background" Value="{DynamicResource Brush.Accent.Subtle}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+  </Style>
+
+  <!-- ========== Slider ========== -->
+  <Style Selector="Slider /template/ Border#TrackBackground">
+    <Setter Property="Height" Value="3" />
+    <Setter Property="CornerRadius" Value="2" />
+    <Setter Property="Background" Value="{DynamicResource Brush.Border.Control}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <!-- ========== ProgressBar ========== -->
+  <Style Selector="ProgressBar">
+    <Setter Property="MinHeight" Value="4" />
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Hover}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}" />
+  </Style>
+
+  <!-- ========== ScrollBar：细、无箭头 ========== -->
+  <Style Selector="ScrollBar /template/ RepeatButton.repeat">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="ScrollBar /template/ Thumb#thumb">
+    <Setter Property="CornerRadius" Value="3" />
+  </Style>
+
+  <!-- ========== ListBox / TreeView ========== -->
+  <Style Selector="ListBox">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+  <Style Selector="TreeView">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="TreeViewItem">
+    <Setter Property="MinHeight" Value="{DynamicResource Size.ListItem}" />
+  </Style>
+  <Style Selector="TreeViewItem /template/ Border#SelectionBorder">
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
+    <Setter Property="Margin" Value="4,0" />
+  </Style>
+
+  <!-- ========== 弹出菜单 / 提示 ========== -->
+  <Style Selector="MenuFlyoutPresenter, ContextMenu">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Control}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Overlay}" />
+    <Setter Property="Padding" Value="4" />
+  </Style>
+  <Style Selector="MenuItem">
+    <Setter Property="MinHeight" Value="{DynamicResource Size.Control}" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Base}" />
+  </Style>
+  <Style Selector="MenuItem /template/ Border#root">
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
+  </Style>
+  <Style Selector="MenuItem:selected /template/ Border#root">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Hover}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="ToolTip">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Control}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Control}" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Small}" />
+  </Style>
+
+  <!-- ========== GridSplitter ========== -->
+  <Style Selector="GridSplitter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <!-- ========== DataGrid ========== -->
+  <Style Selector="DataGrid">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.App}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+    <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource Brush.Border}" />
+    <Setter Property="RowBackground" Value="Transparent" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Base}" />
+  </Style>
+  <Style Selector="DataGridColumnHeader">
+    <Setter Property="Background" Value="{DynamicResource Brush.Bg.Panel}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Muted}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Small}" />
+    <Setter Property="Padding" Value="8,6" />
+  </Style>
+  <Style Selector="DataGridCell">
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
+    <Setter Property="Padding" Value="8,0" />
+  </Style>
+  <Style Selector="DataGridRow">
+    <Setter Property="MinHeight" Value="{DynamicResource Size.Control}" />
+  </Style>
+</Styles>

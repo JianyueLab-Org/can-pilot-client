@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.RadioPanel"
+             x:DataType="vm:RadioViewModel">
+  <!-- 对应 vPilot RadioPanel：COM 名称、频率、TX/RX 指示灯 -->
+  <Grid ColumnDefinitions="40,*,Auto,Auto" ColumnSpacing="4" Height="18">
+    <TextBlock Classes="caption mono" Text="{Binding Name}" VerticalAlignment="Center" />
+    <TextBlock Grid.Column="1" Classes="frequency" Text="{Binding Frequency}" VerticalAlignment="Center" />
+    <Border Grid.Column="2"
+            Classes="indicator tx"
+            Classes.active="{Binding IsTransmitting}"
+            Classes.off="{Binding !IsTransmitEnabled}"
+            ToolTip.Tip="发射">
+      <TextBlock Text="TX" />
+    </Border>
+    <Border Grid.Column="3"
+            Classes="indicator rx"
+            Classes.active="{Binding IsReceiving}"
+            ToolTip.Tip="接收">
+      <TextBlock Text="RX" />
+    </Border>
+  </Grid>
+</UserControl>

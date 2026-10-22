@@ -1,0 +1,30 @@
+using Avalonia;
+using CanClient.Core.Util;
+
+namespace CanClient;
+
+internal static class Program
+{
+    public static bool Debug { get; private set; }
+
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        Debug = args.Contains("--debug", StringComparer.OrdinalIgnoreCase);
+        Log.Setup(AppPaths.DataDirectory, Debug);
+        try
+        {
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        catch (Exception e)
+        {
+            Log.For("uncaught").Critical($"the application crashed: {e}");
+            throw;
+        }
+    }
+
+    public static AppBuilder BuildAvaloniaApp()
+        => AppBuilder.Configure<App>()
+            .UsePlatformDetect()
+            .LogToTrace();
+}

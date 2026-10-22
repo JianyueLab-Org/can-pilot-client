@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:core="using:CanClient.Core"
+        xmlns:views="using:CanClient.Views"
+        x:Class="CanClient.Views.AircraftWindow"
+        Title="航空器列表"
+        Width="1180" Height="420"
+        MinWidth="720" MinHeight="240"
+        WindowDecorations="None"
+        BorderBrush="{DynamicResource Brush.Border.Control}"
+        BorderThickness="1"
+        WindowStartupLocation="CenterOwner">
+  <!-- 对应 vPilot AircraftForm：网络上的航空器、各自匹配到的模型（映射）和在模拟器里的状态，每秒刷新 -->
+  <Panel>
+  <DockPanel>
+    <views:TitleBar DockPanel.Dock="Top" Title="航空器列表" CanMinimize="True" />
+
+    <Border DockPanel.Dock="Bottom" Classes="footer">
+      <DockPanel>
+        <TextBlock x:Name="CountText" DockPanel.Dock="Right" Classes="caption" VerticalAlignment="Center" />
+        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.Sm}">
+          <Button Classes="danger" Content="删除所有航空器" Click="OnDeleteAllClick" />
+          <Button Content="重新加载模型匹配规则" Click="OnReloadRulesClick" />
+          <TextBlock x:Name="RulesText" Classes="caption" VerticalAlignment="Center" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <DataGrid x:Name="Grid"
+              x:DataType="core:AircraftRow"
+              IsReadOnly="True"
+              CanUserResizeColumns="True"
+              CanUserSortColumns="True"
+              GridLinesVisibility="Horizontal"
+              BorderThickness="0">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="呼号" Binding="{Binding Callsign}" Width="90" />
+        <DataGridTextColumn Header="机型" Binding="{Binding TypeCode}" Width="56" />
+        <DataGridTextColumn Header="航司" Binding="{Binding Airline}" Width="50" />
+        <DataGridTextColumn Header="模型名称" Binding="{Binding ModelName}" Width="2*" />
+        <DataGridTextColumn Header="匹配方式" Binding="{Binding MatchDescription}" Width="1.2*" />
+        <DataGridTextColumn Header="规则来源" Binding="{Binding MatchSource}" Width="110" />
+        <DataGridTextColumn Header="模拟器" Binding="{Binding SimStatus}" Width="96" />
+        <DataGridTextColumn Header="纬度" Binding="{Binding Latitude, StringFormat='{}{0:F4}'}" Width="78" />
+        <DataGridTextColumn Header="经度" Binding="{Binding Longitude, StringFormat='{}{0:F4}'}" Width="84" />
+        <DataGridTextColumn Header="高度 ft" Binding="{Binding AltitudeMsl}" Width="66" />
+        <DataGridTextColumn Header="航向" Binding="{Binding Heading}" Width="48" />
+        <DataGridTextColumn Header="地速 kt" Binding="{Binding Groundspeed}" Width="62" />
+        <DataGridTextColumn Header="距离 nm" Binding="{Binding Distance, StringFormat='{}{0:F1}'}" Width="66" />
+      </DataGrid.Columns>
+    </DataGrid>
+  </DockPanel>
+  <views:ResizeGrips />
+  </Panel>
+</Window>

@@ -1,0 +1,19 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.Settings.FontsPage"
+             x:DataType="vm:SettingsViewModel">
+  <!-- vPilot SettingsPanelFonts：留空用默认字体 -->
+  <StackPanel Width="320" HorizontalAlignment="Left">
+    <TextBlock Classes="label" Text="管制员列表字体" />
+    <Grid ColumnDefinitions="*,76" ColumnSpacing="{DynamicResource Space.Sm}">
+      <ComboBox ItemsSource="{Binding FontFamilies}" SelectedItem="{Binding ControllerListFont}" HorizontalAlignment="Stretch" PlaceholderText="默认" />
+      <NumericUpDown Grid.Column="1" Minimum="8" Maximum="24" Increment="1" FormatString="0" Value="{Binding ControllerListFontSize}" />
+    </Grid>
+    <TextBlock Classes="label" Text="文字消息字体" />
+    <Grid ColumnDefinitions="*,76" ColumnSpacing="{DynamicResource Space.Sm}">
+      <ComboBox ItemsSource="{Binding FontFamilies}" SelectedItem="{Binding TextMessagesFont}" HorizontalAlignment="Stretch" PlaceholderText="默认" />
+      <NumericUpDown Grid.Column="1" Minimum="8" Maximum="24" Increment="1" FormatString="0" Value="{Binding TextMessagesFontSize}" />
+    </Grid>
+  </StackPanel>
+</UserControl>

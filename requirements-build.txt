@@ -1,4 +1,0 @@
--r requirements.txt
-pyinstaller
-# 原始 favicon.ico 为 PNG，PyInstaller 需要 Pillow 转换 EXE 图标。
-pillow

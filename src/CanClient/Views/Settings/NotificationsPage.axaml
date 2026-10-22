@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.Settings.NotificationsPage"
+             x:DataType="vm:SettingsViewModel">
+  <!-- vPilot SettingsPanelNotifications，加上原客户端的消息提示音 -->
+  <StackPanel>
+    <CheckBox Content="收到新的私聊消息时闪烁任务栏图标" IsChecked="{Binding FlashTaskbarPrivateMessage}" />
+    <CheckBox Content="收到文字无线电消息时闪烁任务栏图标" IsChecked="{Binding FlashTaskbarRadioMessage}" />
+    <CheckBox Content="收到 SELCAL 消息时闪烁任务栏图标" IsChecked="{Binding FlashTaskbarSelcal}" />
+    <CheckBox Content="与网络断开连接时闪烁任务栏图标" IsChecked="{Binding FlashTaskbarDisconnected}" />
+    <CheckBox Margin="0,10,0,0" Content="收到私聊或点到我呼号的消息时响提示音" IsChecked="{Binding MessageSound}" />
+    <CheckBox Margin="23,0,0,0" Content="频率上的每条消息都响" IsChecked="{Binding MessageSoundAll}" IsEnabled="{Binding MessageSound}" />
+    <Grid ColumnDefinitions="72,*,44,Auto" Margin="23,6,0,0" ColumnSpacing="6">
+      <TextBlock Classes="muted" Text="提示音音量" VerticalAlignment="Center" />
+      <Slider Grid.Column="1" Minimum="0" Maximum="200" TickFrequency="10" IsSnapToTickEnabled="True" Value="{Binding MessageSoundVolume}" />
+      <TextBlock Grid.Column="2" Classes="mono" Text="{Binding SoundVolumeText}" VerticalAlignment="Center" />
+      <Button Grid.Column="3" Content="试听" Command="{Binding PreviewChimeCommand}" />
+    </Grid>
+  </StackPanel>
+</UserControl>

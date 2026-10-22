@@ -1,0 +1,60 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:CanClient.ViewModels"
+        xmlns:views="using:CanClient.Views"
+        x:Class="CanClient.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="设置"
+        Width="640" Height="500"
+        WindowDecorations="None"
+        BorderBrush="{DynamicResource Brush.Border.Control}"
+        BorderThickness="1"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+  <!--
+    对应 vPilot SettingsForm（固定对话框）：
+    左侧菜单，右侧为当前设置面板，底部右对齐 确定 / 应用 / 取消。
+    打开时主窗口蒙上遮罩变暗，以区分当前操作的窗口。
+  -->
+  <DockPanel>
+    <views:TitleBar DockPanel.Dock="Top" Title="设置" />
+
+    <Border DockPanel.Dock="Bottom" Classes="footer">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="{DynamicResource Space.Sm}">
+        <Button Content="确定" Classes="primary" MinWidth="72" Click="OnOkClick" />
+        <Button Content="应用" MinWidth="72" IsEnabled="{Binding IsDirty}" Click="OnApplyClick" />
+        <Button Content="取消" MinWidth="72" IsCancel="True" Click="OnCancelClick" />
+      </StackPanel>
+    </Border>
+
+    <Grid ColumnDefinitions="168,*">
+      <!-- 左侧菜单（vPilot TreeMenu：模型匹配下含“高级”“自定义规则”两个子项） -->
+      <Border Classes="sidebar" Padding="0,8">
+        <ListBox x:Name="Menu" SelectionChanged="OnMenuSelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem">
+              <Setter Property="Theme" Value="{DynamicResource NavItemTheme}" />
+            </Style>
+          </ListBox.Styles>
+          <ListBoxItem Content="网络" Tag="Network" />
+          <ListBoxItem Content="通知" Tag="Notifications" />
+          <ListBoxItem Content="字体" Tag="Fonts" />
+          <ListBoxItem Content="音频" Tag="Audio" />
+          <ListBoxItem Content="按键通话 (PTT)" Tag="Ptt" />
+          <ListBoxItem Content="{Binding SimulatorName, StringFormat='模型匹配 ({0})'}" Tag="ModelMatching" />
+          <ListBoxItem Classes="child" Content="高级" Tag="ModelMatchingAdvanced" />
+          <ListBoxItem Classes="child" Content="自定义规则" Tag="CustomRules" />
+          <ListBoxItem Content="性能" Tag="Performance" />
+          <ListBoxItem Content="更新" Tag="Updates" />
+          <ListBoxItem Content="杂项" Tag="Misc" />
+        </ListBox>
+      </Border>
+
+      <!-- 右侧面板（vPilot TlpRightPanel） -->
+      <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled">
+        <ContentControl x:Name="PanelHost" Margin="{DynamicResource Padding.Panel}" />
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</Window>

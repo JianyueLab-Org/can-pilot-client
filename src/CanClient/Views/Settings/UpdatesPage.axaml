@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.Settings.UpdatesPage"
+             x:DataType="vm:SettingsViewModel">
+  <!-- vPilot SettingsPanelUpdates -->
+  <StackPanel Spacing="6">
+    <CheckBox Content="启动时检查软件更新" IsChecked="{Binding CheckForUpdates}" />
+    <TextBlock Classes="caption" Text="{Binding VersionText}" />
+  </StackPanel>
+</UserControl>
