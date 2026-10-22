@@ -7,6 +7,7 @@ using CanClient.Core.ModelMatching;
 using CanClient.Core.Net;
 using CanClient.Core.Ptt;
 using CanClient.Core.Settings;
+using CanClient.Core.Sim;
 using CanClient.Core.Voice;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -40,6 +41,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     private bool _rulesDirty;
 
     public MainWindowViewModel? ConnectionInfo { get; }
+    public bool ShowServerEndpoints { get; } = DebugOptions.Load().ShowServerEndpoints;
 
     public SettingsViewModel(ClientController controller, MainWindowViewModel? connectionInfo = null)
     {
@@ -58,6 +60,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         controller.Models.ScanProgressChanged += OnScanProgress;
         controller.Models.ScanCompleted += OnScanCompleted;
         _ = RefreshServersAsync();
+        RefreshXPlaneInfo();
+        RefreshSimulatorVisibility();
     }
 
     /// <summary>有未应用的修改时启用“应用”按钮（同 vPilot BtnApply）。</summary>
@@ -70,7 +74,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         nameof(OutputVolumeText), nameof(SelectedModelFolder), nameof(SelectedRuleSet), nameof(InputLevel),
         nameof(LastModelScan), nameof(ModelsFound), nameof(ScanProgressText), nameof(IsScanning), nameof(MatchTestResult),
         nameof(MatchTestCallsign), nameof(MatchTestType), nameof(ServerStatus), nameof(SimulatorName), nameof(PackagesInfo),
-        nameof(DataInfo), nameof(SoundVolumeText)
+        nameof(DataInfo), nameof(SoundVolumeText), nameof(XPlaneStatus), nameof(CslStatus), nameof(CanChangeSimulator),
+        nameof(ShowMsfs2020), nameof(ShowMsfs2024), nameof(ShowMsfs), nameof(ShowXPlane), nameof(PttBindings), nameof(SelectedPttBinding), nameof(CanRemovePtt)
     ];
 
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
@@ -92,6 +97,13 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         FsdPort = _settings.FsdPortNumber;
         VoiceHost = _settings.MumbleHostName;
         VoicePort = _settings.MumblePortNumber;
+        SetServerChoices(null);
+        SimulatorConnection = _settings.SimulatorConnection;
+        ShowAllSimulators = _settings.ShowAllSimulators;
+        XPlanePath = _settings.XPlanePath;
+        CslPath = _settings.CslPath;
+        XPlaneHost = _settings.XPlaneHost;
+        XPlanePort = _settings.XPlanePort;
 
         FlashTaskbarPrivateMessage = _settings.FlashOnPrivateMessage;
         FlashTaskbarRadioMessage = _settings.FlashOnRadioMessage;
@@ -118,7 +130,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         OutputVolumeDb = _settings.OutputGainDb;
         InputVolumeDb = _settings.MicGainDb;
 
-        _bindings = (_settings.PttBindings ?? []).ToList();
+        _bindings = (_settings.PttBindings ?? []).DistinctBy(b => (b.Kind, b.VirtualKey, b.MouseButton, b.Device, b.Button)).ToList();
         UpdatePttText();
 
         RenderTraffic = _settings.RenderTraffic;
@@ -138,6 +150,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     {
         var models = _controller.Models;
         SimulatorName = models.Simulator.DisplayName();
+        DefaultModel = models.DefaultModel;
+        PackagesPath = models.Installation?.PackagesPathOverride ?? "";
         PackagesInfo = models.Installation?.PackagesPath is { } path
             ? $"包目录：{path}"
             : "没有找到 MSFS 的包目录（UserCfg.opt 里的 InstalledPackagesPath）";
@@ -205,6 +219,12 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         _settings.FsdPortNumber = FsdPort;
         _settings.MumbleHostName = VoiceHost.Trim();
         _settings.MumblePortNumber = VoicePort;
+        if (!_controller.IsConnected) _settings.SimulatorConnection = SimulatorConnection;
+        _settings.ShowAllSimulators = ShowAllSimulators;
+        _settings.XPlanePath = XPlanePath.Trim();
+        _settings.CslPath = CslPath.Trim();
+        _settings.XPlaneHost = XPlaneHost.Trim();
+        _settings.XPlanePort = XPlanePort;
 
         _settings.FlashOnPrivateMessage = FlashTaskbarPrivateMessage;
         _settings.FlashOnRadioMessage = FlashTaskbarRadioMessage;
@@ -235,8 +255,10 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         _settings.Debug = DebugLog;
         Core.Util.Log.Level = DebugLog || Program.Debug ? Core.Util.LogLevel.Debug : Core.Util.LogLevel.Info;
 
-        var packagesChanged = (PackagesPath ?? "").Trim() != _settings.PackagesPath;
-        _settings.PackagesPath = (PackagesPath ?? "").Trim();
+        var oldPath = _controller.Models.Simulator == SimulatorType.Msfs ? _settings.Msfs2020PackagesPath : _settings.Msfs2024PackagesPath;
+        var packagesChanged = (PackagesPath ?? "").Trim() != oldPath;
+        if (_controller.Models.Simulator == SimulatorType.Msfs) _settings.Msfs2020PackagesPath = (PackagesPath ?? "").Trim();
+        else _settings.Msfs2024PackagesPath = (PackagesPath ?? "").Trim();
         _settings.Save();
         _controller.ApplyAudioSettings();
 
@@ -261,6 +283,87 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     }
 
     // —— 网络 ——
+    public IReadOnlyList<string> SimulatorConnections { get; } = ["Auto", "MSFS", "XPlane"];
+    [ObservableProperty] private bool _showAllSimulators;
+    [ObservableProperty] private bool _showMsfs2020;
+    [ObservableProperty] private bool _showMsfs2024;
+    [ObservableProperty] private bool _showXPlane;
+    [ObservableProperty] private bool _showMsfs;
+    private bool _msfs2020Installed, _msfs2024Installed, _xplaneInstalled;
+    partial void OnShowAllSimulatorsChanged(bool value) => UpdateSimulatorVisibility();
+    private void RefreshSimulatorVisibility()
+    {
+        var installed = MsfsInstallation.InstalledSimulators().ToArray();
+        _msfs2020Installed = installed.Contains(SimulatorType.Msfs) || _controller.Sim.Simulator == SimulatorType.Msfs;
+        _msfs2024Installed = installed.Contains(SimulatorType.Msfs2024) || _controller.Sim.Simulator == SimulatorType.Msfs2024;
+        _xplaneInstalled = XPlaneInstallation.IsXPlane(XPlanePath) || XPlaneInstallation.FindInstalls().Length > 0 || _controller.Sim.Simulator == SimulatorType.XPlane;
+        UpdateSimulatorVisibility();
+    }
+    private void UpdateSimulatorVisibility()
+    {
+        ShowMsfs2020 = ShowAllSimulators || _msfs2020Installed;
+        ShowMsfs2024 = ShowAllSimulators || _msfs2024Installed;
+        ShowXPlane = ShowAllSimulators || _xplaneInstalled;
+        ShowMsfs = ShowMsfs2020 || ShowMsfs2024;
+    }
+    public async Task SelectMsfsSettingsAsync(SimulatorType simulator)
+    {
+        // 切换模型配置前保存当前页面，防止另一模拟器的规则/目录被覆盖。
+        if (IsDirty) Apply();
+        await _controller.Models.SetSimulatorAsync(simulator);
+        var loading = _loading;
+        _loading = true;
+        LoadModelMatching();
+        _loading = loading;
+    }
+    public bool CanChangeSimulator => !_controller.IsConnected;
+    [ObservableProperty] private string _simulatorConnection = "Auto";
+    [ObservableProperty] private string _xPlanePath = "";
+    [ObservableProperty] private string _cslPath = "";
+    [ObservableProperty] private string _xPlaneHost = "";
+    [ObservableProperty] private int _xPlanePort = 49000;
+    [ObservableProperty] private string _xPlaneStatus = "";
+    [ObservableProperty] private string _cslStatus = "";
+
+    private void RefreshXPlaneInfo()
+    {
+        XPlaneStatus = XPlaneInstallation.IsXPlane(XPlanePath) ? "已找到 X-Plane 安装目录" : "尚未选择 X-Plane 安装目录";
+        CslStatus = string.IsNullOrWhiteSpace(CslPath) ? "尚未选择 CSL 模型库" : "CSL 目录：" + CslPath;
+    }
+
+    [RelayCommand]
+    private async Task DiscoverXPlaneAsync()
+    {
+        var found = await Task.Run(() =>
+        {
+            var root = XPlaneInstallation.IsXPlane(XPlanePath) ? XPlanePath : XPlaneInstallation.FindInstalls().FirstOrDefault() ?? "";
+            return (Root: root, Csl: XPlaneInstallation.FindCsl(root));
+        });
+        XPlanePath = found.Root;
+        if (found.Csl.Length > 0) CslPath = found.Csl;
+        RefreshXPlaneInfo();
+        RefreshSimulatorVisibility();
+    }
+
+    [RelayCommand]
+    private async Task ScanCslAsync()
+    {
+        CslStatus = "正在扫描 CSL……";
+        var models = await Task.Run(() => XPlaneInstallation.ScanCsl(CslPath));
+        CslStatus = $"找到 {models.Count:N0} 个 CSL 模型，运行时由原生插件匹配机型 / 航司 / 涂装。";
+    }
+
+    [RelayCommand]
+    private async Task InstallXPlanePluginAsync()
+    {
+        try
+        {
+            await Task.Run(() => XPlaneInstallation.InstallPlugin(XPlanePath));
+            XPlaneStatus = "XPC_for_CAN 插件安装完成，请重启 X-Plane。";
+        }
+        catch (Exception e) { XPlaneStatus = "安装失败：" + e.Message; }
+    }
+
     [ObservableProperty] private string _networkLogin = "";
     [ObservableProperty] private string _networkPassword = "";
     [ObservableProperty] private bool _rememberPassword;
@@ -269,8 +372,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private int _fsdPort;
     [ObservableProperty] private string _voiceHost = "";
     [ObservableProperty] private int _voicePort;
-    [ObservableProperty] private IReadOnlyList<ServerChoice> _fsdServers = [new("自定义", "", 0)];
-    [ObservableProperty] private IReadOnlyList<ServerChoice> _voiceServers = [new("自定义", "", 0)];
+    [ObservableProperty] private IReadOnlyList<ServerChoice> _fsdServers = [];
+    [ObservableProperty] private IReadOnlyList<ServerChoice> _voiceServers = [];
     [ObservableProperty] private ServerChoice? _selectedFsdServer;
     [ObservableProperty] private ServerChoice? _selectedVoiceServer;
     [ObservableProperty] private string _serverStatus = "正在获取服务器列表……";
@@ -284,18 +387,31 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         {
             var wasLoading = _loading;
             _loading = true;
-            if (list is null)
-                ServerStatus = "服务器列表获取失败，可以直接填写地址和端口。";
-            else
-            {
-                ServerStatus = "选择服务器，或直接填写地址和端口。";
-                FsdServers = [new("自定义", "", 0), .. list.Fsd.Select(s => new ServerChoice(s.Label, s.Host, s.Port))];
-                VoiceServers = [new("自定义", "", 0), .. list.Audio.Select(s => new ServerChoice(s.Label, s.Host, s.Port))];
-            }
+            ServerStatus = list is null ? "服务器列表获取失败，保留当前可选服务器，可稍后重试。"
+                : ShowServerEndpoints ? "选择服务器，或填写调试地址和端口。" : "请选择 FSD 和语音服务器。";
+            SetServerChoices(list);
             SelectedFsdServer = FsdServers.FirstOrDefault(s => s.Host == FsdHost && s.Port == FsdPort) ?? FsdServers[0];
             SelectedVoiceServer = VoiceServers.FirstOrDefault(s => s.Host == VoiceHost && s.Port == VoicePort) ?? VoiceServers[0];
             _loading = wasLoading;
         });
+    }
+
+    private void SetServerChoices(ServerList? list)
+    {
+        IReadOnlyList<ServerChoice> Choices(IReadOnlyList<ServerEntry>? rows, string host, int port, string defaultHost, int defaultPort)
+        {
+            var choices = rows?.Select(s => new ServerChoice(
+                ShowServerEndpoints ? s.Label : s.Name + (s.Location.Length > 0 ? " · " + s.Location : ""), s.Host, s.Port)).ToList() ?? [];
+            if (choices.Count == 0) choices.Add(new("CAN 默认服务器", defaultHost, defaultPort));
+            if (ShowServerEndpoints) choices.Insert(0, new("自定义（调试）", "", 0));
+            if (!choices.Any(s => s.Host == host && s.Port == port))
+                choices.Add(new(ShowServerEndpoints ? $"当前配置 ({host}:{port})" : "当前已配置服务器", host, port));
+            return choices;
+        }
+        FsdServers = Choices(list?.Fsd, FsdHost, FsdPort, AppSettings.FsdHost, AppSettings.FsdPort);
+        VoiceServers = Choices(list?.Audio, VoiceHost, VoicePort, AppSettings.MumbleHost, AppSettings.MumblePort);
+        SelectedFsdServer = FsdServers.FirstOrDefault(s => s.Host == FsdHost && s.Port == FsdPort);
+        SelectedVoiceServer = VoiceServers.FirstOrDefault(s => s.Host == VoiceHost && s.Port == VoicePort);
     }
 
     partial void OnSelectedFsdServerChanged(ServerChoice? value)
@@ -434,14 +550,25 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     private string _pttAssignment = "无";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PttButtonText), nameof(CanClearPtt))]
+    [NotifyPropertyChangedFor(nameof(PttButtonText), nameof(CanClearPtt), nameof(CanRemovePtt))]
     private bool _isWaitingForPtt;
 
-    public string PttButtonText => IsWaitingForPtt ? "取消" : _bindings.Count > 0 ? "设置其他 PTT 按键或按钮" : "设置新的 PTT 按键或按钮";
+    public string PttButtonText => IsWaitingForPtt ? "取消录制" : "添加 PTT 按键或按钮";
+    public ObservableCollection<PttBinding> PttBindings { get; } = [];
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRemovePtt))]
+    private PttBinding? _selectedPttBinding;
+    public bool CanRemovePtt => !IsWaitingForPtt && SelectedPttBinding is not null;
     public bool CanClearPtt => !IsWaitingForPtt && _bindings.Count > 0;
 
-    private void UpdatePttText() =>
-        PttAssignment = _bindings.Count == 0 ? "无" : string.Join("、", _bindings.Select(b => b.Describe()));
+    private void UpdatePttText()
+    {
+        PttBindings.Clear();
+        foreach (var binding in _bindings) PttBindings.Add(binding);
+        PttAssignment = _bindings.Count == 0 ? "无" : $"已设置 {_bindings.Count} 个 PTT，任意一个按住即可发话";
+        OnPropertyChanged(nameof(CanClearPtt));
+        OnPropertyChanged(nameof(CanRemovePtt));
+    }
 
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task SetPtt()
@@ -457,7 +584,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
             var binding = await _controller.Ptt.CaptureAsync();
             if (binding is not null)
             {
-                _bindings = [binding];
+                if (!_bindings.Any(b => b.Matches(binding))) _bindings.Add(binding);
                 UpdatePttText();
             }
         }
@@ -471,6 +598,15 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     private void ClearPtt()
     {
         _bindings.Clear();
+        UpdatePttText();
+    }
+
+    [RelayCommand]
+    private void RemovePtt()
+    {
+        if (IsWaitingForPtt || SelectedPttBinding is not { } selected) return;
+        _bindings.Remove(selected);
+        SelectedPttBinding = null;
         UpdatePttText();
     }
 

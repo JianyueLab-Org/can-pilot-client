@@ -3,7 +3,7 @@ namespace CanClient.Core.Util;
 /// <summary>
 /// 文件放在哪。和 Python 版一样，设置、日志、扫描结果都跟着程序目录走——
 /// 用户把整个目录拷到别的机器上，配置一起带过去。
-/// 程序目录不可写（装在 Program Files 下）时退到 %LOCALAPPDATA%\MSFS for CAN。
+/// 配置目录不可写时退到 %LOCALAPPDATA%\CAN Pilot Client；日志始终使用程序目录的 logs。
 /// </summary>
 public static class AppPaths
 {
@@ -32,7 +32,7 @@ public static class AppPaths
             return program;
 
         var fallback = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MSFS for CAN");
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CAN Pilot Client");
         Directory.CreateDirectory(fallback);
         return fallback;
     }

@@ -30,6 +30,15 @@ public static class Altitude
 
     public static bool SeaLevelValid(double? hpa) => hpa is >= SeaLevelMinHpa and <= SeaLevelMaxHpa;
 
+    public static (double Network, double Pressure, double TemperatureError) XPlane(
+        double altitudeFt, double? seaLevelHpa, double? pressureFt, double? temperatureErrorFt)
+    {
+        var error = temperatureErrorFt is { } e && double.IsFinite(e) && Math.Abs(e) <= MaxTemperatureErrorFt ? e : 0;
+        if (pressureFt is { } p && double.IsFinite(p) && Math.Abs(p - altitudeFt - error) <= MaxTemperatureErrorFt)
+            return (altitudeFt + error, p, error);
+        return (altitudeFt, SeaLevelValid(seaLevelHpa) ? PressureAltitude(altitudeFt, seaLevelHpa!.Value) : altitudeFt, 0);
+    }
+
     private static double Ratio(double seaLevelHpa) => Math.Pow(seaLevelHpa / IsaSeaLevelHpa, IsaExponent);
 
     /// <summary>ISA 温度、海平面气压为 seaLevelHpa 的大气里，高度 altitudeFt 处的气压高度。</summary>

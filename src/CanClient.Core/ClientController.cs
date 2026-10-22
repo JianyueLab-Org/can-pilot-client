@@ -64,6 +64,7 @@ public sealed class ClientController : IDisposable
     private readonly InjectionLoop _injectionLoop;
     private readonly Dictionary<string, (ModelMatchResult Result, string Equipment, string Airline)> _models = new(StringComparer.Ordinal);
     private TrafficInjector? _injector;
+    private readonly XPlaneTrafficBridge _xplaneTraffic = new();
     private volatile IReadOnlyList<TrafficEntry>? _plannedEntries;
     private volatile Dictionary<string, string>? _plannedModels;
     private (double Lat, double Lon)? _origin;
@@ -84,6 +85,7 @@ public sealed class ClientController : IDisposable
     public ClientController(AppSettings settings)
     {
         Settings = settings;
+        Sim = new SimulatorConnection(settings);
         Models = new ModelMatchingService(settings);
         Models.RulesChanged += InvalidateModels;
         Models.Notification += text => Post(MessageKind.System, text);
@@ -96,14 +98,15 @@ public sealed class ClientController : IDisposable
         Sim.Opened += (simulator, name) =>
         {
             Post(MessageKind.System, $"已连接到模拟器：{name}");
-            _ = Models.SetSimulatorAsync(simulator);
+            if (simulator != SimulatorType.XPlane) _ = Models.SetSimulatorAsync(simulator);
+            InvalidateModels();
         };
         _injectionLoop = new InjectionLoop(InjectFrame);
         _timer = new Timer(_ => SafeTick(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
     public AppSettings Settings { get; }
-    public SimConnection Sim { get; } = new();
+    public SimulatorConnection Sim { get; }
     public TrafficTable Traffic { get; } = new();
     public ModelMatchingService Models { get; }
     public AudioEngine Audio { get; }
@@ -169,7 +172,9 @@ public sealed class ClientController : IDisposable
             return "请先在“设置 → 网络”里填写 CID 和密码。";
         // 没有模拟器位置时不能登录 FSD：否则服务端保留一条没有有效位置的连接
         if (!observer && !Sim.Connected)
-            return "还没有连上 MSFS，或者还没进入飞行。观察员模式可以不开模拟器。";
+            return "还没有连上 MSFS / X-Plane，或者还没进入飞行。观察员模式可以不开模拟器。";
+        if (!observer && Sim.NeedsSelection)
+            return "检测到两个模拟器，请先在主页出现的模拟器选择框中选择本次使用的模拟器。";
 
         Settings.Callsign = callsign;
         Settings.Aircraft = typeCode;
@@ -180,6 +185,7 @@ public sealed class ClientController : IDisposable
         _typeCode = typeCode;
         _observer = observer;
         _connectRequested = true;
+        Sim.LockSelection = !observer;
         _simWasLost = false;
 
         if (Settings.ConnectFsd && !observer)
@@ -200,7 +206,12 @@ public sealed class ClientController : IDisposable
     private void StartFsd()
     {
         Fsd?.Stop();
-        var simulator = Sim.Simulator == SimulatorType.Msfs2024 ? FsdProtocol.SimulatorMsfs2024 : FsdProtocol.SimulatorMsfs2020;
+        var simulator = Sim.Simulator switch
+        {
+            SimulatorType.XPlane => FsdProtocol.SimulatorXPlane,
+            SimulatorType.Msfs2024 => FsdProtocol.SimulatorMsfs2024,
+            _ => FsdProtocol.SimulatorMsfs2020
+        };
         var fsd = new FsdClient(Settings.FsdHostName, Settings.FsdPortNumber, _callsign, Settings.Cid, Settings.Password,
             string.IsNullOrWhiteSpace(Settings.RealName) ? Settings.Cid : Settings.RealName, Settings.Rating, _typeCode,
             simulator, Traffic);
@@ -225,6 +236,7 @@ public sealed class ClientController : IDisposable
         voice.RadioReceivingChanged += (radio, value) => { if (voice == Voice) RadioReceivingChanged?.Invoke(radio, value); };
         voice.ChannelChanged += (frequency, name) => Post(MessageKind.System, $"语音已进入 {frequency:F3}（{name}）");
         Voice = voice;
+        Ptt.SetMonitoring(true);
         SyncVoiceRadios();
         ThreadPool.QueueUserWorkItem(_ => voice.Start());
     }
@@ -232,6 +244,8 @@ public sealed class ClientController : IDisposable
     public void Disconnect()
     {
         _connectRequested = false;
+        Ptt.SetMonitoring(false);
+        Sim.LockSelection = false;
         var fsd = Fsd;
         Fsd = null;
         fsd?.Stop();
@@ -243,6 +257,7 @@ public sealed class ClientController : IDisposable
         _injectionLoop.Stop();
         _plannedEntries = null;
         _injector?.Clear();
+        _xplaneTraffic.Send([], Own, Settings.CslPath, PluginHost);
         Traffic.Clear();
         lock (_lock)
             _models.Clear();
@@ -296,6 +311,7 @@ public sealed class ClientController : IDisposable
         if (state is LinkState.Offline or LinkState.Error)
         {
             Voice = null;
+            Ptt.SetMonitoring(false);
             TransmittingChanged?.Invoke(false);
             ReceivingChanged?.Invoke(false);
             RadioReceivingChanged?.Invoke(1, false);
@@ -428,13 +444,19 @@ public sealed class ClientController : IDisposable
             _plannedEntries = null;
             return;
         }
-        if (_injector is null || _injector.Generation != Sim.Generation)
+        if (Sim.Simulator == SimulatorType.XPlane)
+        {
+            if (_injector is not null) { _injector.Dispose(); _injector = null; }
+            _origin = (own.Latitude, own.Longitude);
+            return;
+        }
+        if (_injector is null || _injector.Generation != Sim.Msfs.Generation)
         {
             _injector?.Dispose();
             _injector = null;
             if (Sim.IsOpen && Sim.Simulator != SimulatorType.None)
             {
-                var injector = new TrafficInjector(Sim);
+                var injector = new TrafficInjector(Sim.Msfs);
                 injector.Frame += _injectionLoop.FrameArrived;
                 injector.CreateFailed += OnCreateFailed;
                 _injector = injector;
@@ -455,6 +477,8 @@ public sealed class ClientController : IDisposable
     /// <summary>给一架飞机挑模型，结果缓存住；机型/航司变了、规则变了、模型被拉黑才重新匹配。</summary>
     private ModelMatchResult ModelFor(TrafficEntry entry)
     {
+        if (Sim.Simulator == SimulatorType.XPlane)
+            return new ModelMatchResult(entry.Csl, null, 0, entry.Equipment);
         lock (_lock)
         {
             if (_models.TryGetValue(entry.Callsign, out var cached) && !entry.ModelDirty
@@ -500,6 +524,15 @@ public sealed class ClientController : IDisposable
     /// <summary>注入循环的一帧：积分到此刻，写进模拟器。在注入线程上。</summary>
     private void InjectFrame()
     {
+        if (Sim.Simulator == SimulatorType.XPlane)
+        {
+            var own = Sim.Snapshot();
+            var xpEntries = Settings.RenderTraffic && own is not null
+                ? Traffic.Snapshot(origin: (own.Latitude, own.Longitude), limit: Math.Min(Settings.MaxAircraft, 63), maxRangeNm: Settings.TrafficRangeNm)
+                : [];
+            _xplaneTraffic.Send(xpEntries, own, Settings.CslPath, PluginHost);
+            return;
+        }
         var injector = _injector;
         if (injector is null)
             return;
@@ -522,6 +555,7 @@ public sealed class ClientController : IDisposable
     /// <summary>删除模拟器里的所有他机（航空器列表里的按钮）。网络上的飞机下一帧会重新建出来。</summary>
     public void RemoveAllAircraft()
     {
+        _xplaneTraffic.Send([], Own, Settings.CslPath, PluginHost);
         _injector?.Clear();
         InvalidateModels();
     }
@@ -542,6 +576,15 @@ public sealed class ClientController : IDisposable
             var status = injected.TryGetValue(e.Callsign, out var info)
                 ? info.ObjectId is { } id ? $"已生成 #{id}" : "生成中"
                 : e.RangeNm > Settings.TrafficRangeNm ? "超出显示距离" : "未生成";
+            if (Sim.Simulator == SimulatorType.XPlane)
+            {
+                rows.Add(new AircraftRow(e.Callsign, e.Equipment, e.Airline, e.Csl.Length > 0 ? e.Csl : "原生插件自动匹配",
+                    "CSL 机型 / 航司 / 涂装", "XPC_for_CAN / xplanemp2",
+                    !Settings.RenderTraffic ? "渲染已关闭" : e.RangeNm > Settings.TrafficRangeNm ? "超出显示距离" : "已发送至插件（无生成确认）",
+                    e.Latitude, e.Longitude, (int)Math.Round(e.Altitude), (int)Math.Round(e.Heading) % 360,
+                    e.Groundspeed, e.RangeNm, e.Pitch, e.Bank));
+                continue;
+            }
             rows.Add(new AircraftRow(e.Callsign, e.Equipment, e.Airline,
                 match.Result?.ModelName ?? "", match.Result?.Description ?? "（还没匹配）", match.Result?.Source ?? "",
                 status, e.Latitude, e.Longitude, (int)Math.Round(e.Altitude), (int)Math.Round(e.Heading) % 360,
@@ -692,8 +735,11 @@ public sealed class ClientController : IDisposable
             Disconnect();
         _injectionLoop.Stop();
         _injector?.Dispose();
+        _xplaneTraffic.Dispose();
         Ptt.Dispose();
         Sim.Dispose();
         Audio.Dispose();
     }
+
+    private string PluginHost => "127.0.0.1";
 }

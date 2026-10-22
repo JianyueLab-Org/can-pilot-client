@@ -42,6 +42,7 @@ public static class FsdProtocol
     // 模拟器编号，取自 can-fsd 的 docs/enumerations.md。
     public const int SimulatorMsfs2020 = 10;
     public const int SimulatorMsfs2024 = 11;
+    public const int SimulatorXPlane = 16;
 
     public const int MaxCallsignLength = 12;
     public const string RangedAll = "@94836";

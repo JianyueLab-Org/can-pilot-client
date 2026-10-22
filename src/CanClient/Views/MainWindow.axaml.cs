@@ -164,7 +164,7 @@ public partial class MainWindow : Window
         var body = new SelectableTextBlock
         {
             Text = $"{AppVersion.ClientName} {AppVersion.Full}\n" +
-                   "CAN 连飞网络的 MSFS 2020 / 2024 飞行员客户端。\n" +
+                   "CAN 连飞网络的 MSFS 2020 / 2024 与 X-Plane 11 / 12 统一飞行员客户端。\n" +
                    "界面布局参考 vPilot，他机模型匹配沿用 vPilot 的规则与模型库。\n" +
                    $"日志：{Log.FilePath ?? "（无）"}",
             TextWrapping = TextWrapping.Wrap,

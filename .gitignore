@@ -7,6 +7,7 @@ TestResults/
 
 # 运行时生成
 msfs_settings.json
+can-pilot.debug.json
 msfs-for-can.log*
 logs/
 ModelScanResult-*.xml
@@ -16,3 +17,4 @@ native/rnnoise/work/
 native/rnnoise/out/
 rnnoise.dll
 RNNOISE-COPYING
+native/XPC_for_CAN-plugin.zip

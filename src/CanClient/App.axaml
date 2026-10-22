@@ -13,16 +13,19 @@
   -->
   <Application.Styles>
     <SimpleTheme />
+    <Style Selector="Window">
+      <Setter Property="Icon" Value="/app.ico" />
+    </Style>
     <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Simple.xaml" />
-    <StyleInclude Source="avares://msfs-for-can/Styles/Theme/Controls.axaml" />
-    <StyleInclude Source="avares://msfs-for-can/Styles/App.axaml" />
+    <StyleInclude Source="avares://can-pilot/Styles/Theme/Controls.axaml" />
+    <StyleInclude Source="avares://can-pilot/Styles/App.axaml" />
   </Application.Styles>
 
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
-        <ResourceInclude Source="avares://msfs-for-can/Styles/Theme/Tokens.axaml" />
-        <ResourceInclude Source="avares://msfs-for-can/Styles/Theme/ControlThemes.axaml" />
+        <ResourceInclude Source="avares://can-pilot/Styles/Theme/Tokens.axaml" />
+        <ResourceInclude Source="avares://can-pilot/Styles/Theme/ControlThemes.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>

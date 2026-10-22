@@ -7,7 +7,8 @@ public enum SimulatorType
 {
     None,
     Msfs,
-    Msfs2024
+    Msfs2024,
+    XPlane
 }
 
 /// <summary>
@@ -31,6 +32,7 @@ public static class SimulatorTypeExtensions
     {
         SimulatorType.Msfs => "MSFS",
         SimulatorType.Msfs2024 => "MSFS 2024",
+        SimulatorType.XPlane => "X-Plane",
         _ => "未连接"
     };
 
@@ -38,6 +40,7 @@ public static class SimulatorTypeExtensions
     {
         SimulatorType.Msfs => "Microsoft Flight Simulator",
         SimulatorType.Msfs2024 => "Microsoft Flight Simulator 2024",
+        SimulatorType.XPlane => "X-Plane 11 / 12",
         _ => "未知模拟器"
     };
 

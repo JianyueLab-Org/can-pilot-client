@@ -22,6 +22,9 @@ public sealed record AircraftConfigFile(string VirtualPath, string FullPath, str
 /// </summary>
 public sealed class MsfsInstallation
 {
+    private static readonly Lazy<IReadOnlyList<SimulatorType>> DetectedInstallations = new(() =>
+        new[] { SimulatorType.Msfs2024, SimulatorType.Msfs }
+            .Where(type => new MsfsInstallation(type).IsInstalled).ToArray());
     private static readonly Logger Log = Util.Log.For("models");
 
     // 这些 SimObjects 子目录里的东西不是飞机
@@ -62,6 +65,19 @@ public sealed class MsfsInstallation
     public string? PackagesPath { get; private set; }
 
     public bool IsValid => PackagesPath is not null;
+
+    /// <summary>侧栏安装检测：配置残留和手工填过的共享目录不能单独证明对应版本已安装。</summary>
+    public bool IsInstalled => _userConfigFiles.Any(file =>
+        ReadInstalledPackagesPath(file) is { } path && HasVersionPackages(path, SimulatorType));
+
+    internal static bool HasVersionPackages(string path, SimulatorType simulator) => simulator switch
+    {
+        SimulatorType.Msfs => Directory.Exists(Path.Combine(path, "Official")) &&
+            !Directory.Exists(Path.Combine(path, "Official2024")),
+        SimulatorType.Msfs2024 => Directory.Exists(Path.Combine(path, "Official2024")) ||
+            Directory.Exists(Path.Combine(path, "Community2024")),
+        _ => false
+    };
 
     /// <summary>读 UserCfg.opt。用户在设置里手动指定了包目录的话以那个为准。</summary>
     private void Validate()
@@ -266,10 +282,6 @@ public sealed class MsfsInstallation
     /// <summary>这台机器上装了哪些 MSFS（读得到 InstalledPackagesPath 的）。</summary>
     public static IEnumerable<SimulatorType> InstalledSimulators()
     {
-        foreach (var type in new[] { SimulatorType.Msfs2024, SimulatorType.Msfs })
-        {
-            if (new MsfsInstallation(type).IsValid)
-                yield return type;
-        }
+        return DetectedInstallations.Value;
     }
 }

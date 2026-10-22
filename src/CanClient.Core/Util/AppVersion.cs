@@ -11,8 +11,8 @@ namespace CanClient.Core.Util;
 public static class AppVersion
 {
     /// <summary>FSD $ID 里的客户端名和更新服务器上的包名，沿用 Python 版，服务端靠它们认人。</summary>
-    public const string ClientName = "MSFS for CAN";
-    public const string UpdateClientId = "msfs-for-can";
+    public const string ClientName = "CAN Pilot Client";
+    public const string UpdateClientId = "can-pilot";
 
     private static readonly Assembly Assembly = typeof(AppVersion).Assembly;
 

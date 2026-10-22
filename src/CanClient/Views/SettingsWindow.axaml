@@ -42,9 +42,12 @@
           <ListBoxItem Content="字体" Tag="Fonts" />
           <ListBoxItem Content="音频" Tag="Audio" />
           <ListBoxItem Content="按键通话 (PTT)" Tag="Ptt" />
-          <ListBoxItem Content="{Binding SimulatorName, StringFormat='模型匹配 ({0})'}" Tag="ModelMatching" />
-          <ListBoxItem Classes="child" Content="高级" Tag="ModelMatchingAdvanced" />
-          <ListBoxItem Classes="child" Content="自定义规则" Tag="CustomRules" />
+          <ListBoxItem Content="模拟器" Tag="SimulatorGeneral" />
+          <ListBoxItem Content="MSFS 2020" Tag="Msfs2020" IsVisible="{Binding ShowMsfs2020}" />
+          <ListBoxItem Content="MSFS 2024" Tag="Msfs2024" IsVisible="{Binding ShowMsfs2024}" />
+          <ListBoxItem Content="X-Plane" Tag="Simulator" IsVisible="{Binding ShowXPlane}" />
+          <ListBoxItem Classes="child" Content="MSFS 高级规则" Tag="ModelMatchingAdvanced" IsVisible="{Binding ShowMsfs}" />
+          <ListBoxItem Classes="child" Content="MSFS 自定义规则" Tag="CustomRules" IsVisible="{Binding ShowMsfs}" />
           <ListBoxItem Content="性能" Tag="Performance" />
           <ListBoxItem Content="更新" Tag="Updates" />
           <ListBoxItem Content="杂项" Tag="Misc" />

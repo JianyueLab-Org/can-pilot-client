@@ -57,11 +57,9 @@ public sealed class ModelMatchingService
     public async Task InitializeAsync()
     {
         await Task.Run(LoadData).ConfigureAwait(false);
-        var simulator = _settings.LastSimulator;
-        if (simulator == SimulatorType.None)
-            simulator = MsfsInstallation.InstalledSimulators().FirstOrDefault();
-        if (simulator == SimulatorType.None)
-            simulator = SimulatorType.Msfs2024;
+        var installed = MsfsInstallation.InstalledSimulators().ToArray();
+        var simulator = installed.Contains(_settings.LastSimulator) ? _settings.LastSimulator : installed.FirstOrDefault();
+        if (simulator == SimulatorType.None) return;
         await SetSimulatorAsync(simulator).ConfigureAwait(false);
     }
 
@@ -85,7 +83,7 @@ public sealed class ModelMatchingService
     /// <summary>连上了某个模拟器（或启动时猜的那个）。换了模拟器就换一套扫描结果和规则。</summary>
     public async Task SetSimulatorAsync(SimulatorType simulator, bool forceValidate = false)
     {
-        if (simulator == SimulatorType.None)
+        if (simulator is SimulatorType.None or SimulatorType.XPlane)
             return;
         if (simulator == Simulator && !forceValidate && ScanResult is not null)
             return;
@@ -99,7 +97,8 @@ public sealed class ModelMatchingService
         var config = Config;
         Matcher.DefaultModel = string.IsNullOrWhiteSpace(config.DefaultModel) ? simulator.DefaultModel() : config.DefaultModel;
         Matcher.ClearErroneous(config.ErroneousModels);
-        Installation = new MsfsInstallation(simulator, _settings.PackagesPath);
+        var packagesPath = simulator == SimulatorType.Msfs ? _settings.Msfs2020PackagesPath : _settings.Msfs2024PackagesPath;
+        Installation = new MsfsInstallation(simulator, string.IsNullOrWhiteSpace(packagesPath) ? _settings.PackagesPath : packagesPath);
 
         var cached = ModelScanStore.Load(simulator);
         string? reason;

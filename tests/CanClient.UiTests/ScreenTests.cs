@@ -111,16 +111,34 @@ public class ScreenTests(ITestOutputHelper output)
         Assert.Null(main.FindControl<TextBlock>("VoiceConnectionStatus"));
 
         var settings = new SettingsViewModel(controller, vm);
+        var detected2020 = settings.ShowMsfs2020;
+        var detected2024 = settings.ShowMsfs2024;
+        var detectedXp = settings.ShowXPlane;
+        settings.ShowAllSimulators = true;
+        Assert.True(settings.ShowMsfs2020 && settings.ShowMsfs2024 && settings.ShowXPlane);
+        settings.ShowAllSimulators = false;
+        Assert.Equal(detected2020, settings.ShowMsfs2020);
+        Assert.Equal(detected2024, settings.ShowMsfs2024);
+        Assert.Equal(detectedXp, settings.ShowXPlane);
         var window = new SettingsWindow { DataContext = settings };
         window.Show();
         var menu = window.FindControl<ListBox>("Menu")!;
-        string[] names = ["network", "notifications", "fonts", "audio", "ptt", "matching", "advanced", "rules", "performance", "updates", "misc", "information"];
+        settings.ShowAllSimulators = true;
+        string[] names = ["network", "notifications", "fonts", "audio", "ptt", "simulator-general", "msfs2020", "msfs2024", "simulator", "advanced", "rules", "performance", "updates", "misc", "information"];
         for (var i = 0; i < names.Length; i++)
         {
             menu.SelectedIndex = i;
             if (names[i] == "matching")
                 settings.TestMatchCommand.Execute(null);
             Save(window, $"02-settings-{i:D2}-{names[i]}");
+            if (names[i] == "network")
+            {
+                var page = (Control)window.FindControl<ContentControl>("PanelHost")!.Content!;
+                Assert.False(page.FindControl<Grid>("FsdEndpointEditor")!.IsVisible);
+                Assert.False(page.FindControl<Grid>("VoiceEndpointEditor")!.IsVisible);
+                Assert.DoesNotContain(settings.FsdServers, s => s.Host.Length == 0);
+                Assert.DoesNotContain(settings.VoiceServers, s => s.Host.Length == 0);
+            }
             if (names[i] == "information")
             {
                 var page = (Control)window.FindControl<ContentControl>("PanelHost")!.Content!;

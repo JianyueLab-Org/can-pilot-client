@@ -32,6 +32,8 @@
 
           <!-- 按钮与呼号：窗口变窄时自动换行，不会被截断 -->
           <WrapPanel ItemSpacing="{DynamicResource Space.Sm}" LineSpacing="{DynamicResource Space.Sm}" VerticalAlignment="Center">
+            <Image Source="{DynamicResource CanLogo}" Width="28" Height="28" Margin="0,0,6,0"
+                   VerticalAlignment="Center" ToolTip.Tip="CAN Pilot Client" />
             <Button Classes.primary="{Binding !IsConnected}"
                     MinWidth="64"
                     Content="{Binding ConnectButtonText}"
@@ -41,6 +43,10 @@
             <Rectangle Classes="vsep" />
             <Button Content="飞行计划" Click="OnFlightPlanClick" />
             <Button Content="设置" Click="OnSettingsClick" />
+            <ComboBox IsVisible="{Binding ShowSimulatorChoice}" IsEnabled="{Binding CanChooseSimulator}"
+                      ItemsSource="{Binding RunningSimulatorChoices}" SelectedItem="{Binding SelectedRunningSimulator}"
+                      PlaceholderText="选择本次模拟器" MinWidth="140"
+                      ToolTip.Tip="同时检测到两个模拟器，请选择本次使用的模拟器；切换前先断开联飞。" />
             <Button Classes="icon" Content="⋯" ToolTip.Tip="更多">
               <Button.Flyout>
                 <MenuFlyout Placement="BottomEdgeAlignedLeft">

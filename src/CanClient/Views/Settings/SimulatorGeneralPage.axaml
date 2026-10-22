@@ -1,0 +1,9 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels" x:Class="CanClient.Views.Settings.SimulatorGeneralPage" x:DataType="vm:SettingsViewModel">
+  <StackPanel Spacing="10">
+    <TextBlock Classes="label" Text="模拟器接入" />
+    <ComboBox ItemsSource="{Binding SimulatorConnections}" SelectedItem="{Binding SimulatorConnection}" IsEnabled="{Binding CanChangeSimulator}" />
+    <CheckBox Content="显示所有模拟器（包括未检测到安装的）" IsChecked="{Binding ShowAllSimulators}" />
+    <TextBlock Classes="caption" TextWrapping="Wrap" Text="默认只显示已安装的 MSFS 2020、MSFS 2024 和 X-Plane。便携安装未被检测到时，开启显示所有模拟器，再到对应页面指定目录。联飞前选择接入类型，连接期间不切换。" />
+  </StackPanel>
+</UserControl>

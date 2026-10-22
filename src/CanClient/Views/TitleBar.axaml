@@ -6,9 +6,12 @@
   <!-- 自绘标题栏：用于无系统边框的子窗口（设置、航空器列表），拖动空白处移动窗口 -->
   <Border Classes="toolbar" Padding="12,0,6,0" Height="34" PointerPressed="OnPointerPressed">
     <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=views:TitleBar}}"
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Image Source="{DynamicResource CanLogo}" Width="20" Height="20" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=views:TitleBar}}"
                  FontWeight="SemiBold"
                  VerticalAlignment="Center" />
+      </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
         <Button Classes="ghost icon" Content="—" FontSize="10" ToolTip.Tip="最小化"
                 IsVisible="{Binding CanMinimize, RelativeSource={RelativeSource AncestorType=views:TitleBar}}"

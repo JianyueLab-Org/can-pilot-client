@@ -1,17 +1,27 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:CanClient.ViewModels"
+             xmlns:ptt="using:CanClient.Core.Ptt"
              x:Class="CanClient.Views.Settings.PttPage"
              x:DataType="vm:SettingsViewModel">
   <!-- vPilot SettingsPanelPtt -->
   <StackPanel Width="300" HorizontalAlignment="Left">
     <TextBlock Classes="muted" Text="当前 PTT 分配" />
     <TextBlock Margin="0,6,0,12" Classes="mono" FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding PttAssignment}" />
+    <ListBox ItemsSource="{Binding PttBindings}" SelectedItem="{Binding SelectedPttBinding}" MaxHeight="180" MinHeight="60">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="ptt:PttBinding">
+          <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
     <Button Width="220" HorizontalAlignment="Left" Content="{Binding PttButtonText}" Command="{Binding SetPttCommand}" />
     <Panel Height="28">
       <TextBlock Classes="caption" VerticalAlignment="Center"
                  Text="正在等待按键或按钮……" IsVisible="{Binding IsWaitingForPtt}" />
     </Panel>
-    <Button Width="220" HorizontalAlignment="Left" Content="清除当前 PTT 分配" IsEnabled="{Binding CanClearPtt}" Command="{Binding ClearPttCommand}" />
+    <Button Width="220" HorizontalAlignment="Left" Content="移除选中的 PTT" IsEnabled="{Binding CanRemovePtt}" Command="{Binding RemovePttCommand}" />
+    <Button Margin="0,6,0,0" Width="220" HorizontalAlignment="Left" Content="清除全部 PTT" IsEnabled="{Binding CanClearPtt}" Command="{Binding ClearPttCommand}" />
+    <TextBlock Classes="caption" Margin="0,8,0,0" TextWrapping="Wrap" Text="可同时配置键盘、鼠标侧键和多个摇杆按钮；全部松开才结束发话。点应用保存。" />
   </StackPanel>
 </UserControl>

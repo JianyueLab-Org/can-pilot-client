@@ -9,7 +9,8 @@ public sealed record JoystickInfo(int Id, string Name);
 /// <summary>
 /// PTT 的输入源：键盘、鼠标侧键、摇杆按钮，任意一个绑定按住即发话。
 ///
-/// 一条后台线程每 10 ms 轮询一次：键盘和鼠标用 GetAsyncKeyState（全局，不需要窗口焦点，
+/// 连接语音时一条线程每 10 ms 轮询已绑定输入；未连接或没有绑定时事件休眠。
+/// 键盘和鼠标用 GetAsyncKeyState（全局，不需要窗口焦点，
 /// **不吞键**——PTT 键在模拟器里往往另有用途），摇杆用 winmm 的 joyGetPosEx。
 /// 状态真的翻转时才触发 <see cref="Changed"/>，在轮询线程上。
 ///
@@ -21,6 +22,12 @@ public sealed class PttWatcher : IDisposable
     private static readonly Logger Log = Util.Log.For("ptt");
 
     private const int PollMs = 10;
+    private readonly AutoResetEvent _wake = new(false);
+    private bool _monitoring;
+    private readonly int[] _joystickButtons = new int[16];
+    private readonly bool[] _joystickRead = new bool[16];
+    private IReadOnlyList<JoystickInfo> _captureJoysticks = [];
+    private DateTime _nextCaptureScan;
     private const int VkLButton = 0x01, VkRButton = 0x02, VkMButton = 0x04, VkXButton1 = 0x05, VkXButton2 = 0x06;
 
     [DllImport("user32.dll")]
@@ -84,7 +91,15 @@ public sealed class PttWatcher : IDisposable
     public void SetBindings(IEnumerable<PttBinding> bindings)
     {
         lock (_lock)
-            _bindings = bindings.ToList();
+            _bindings = bindings.DistinctBy(b => (b.Kind, b.VirtualKey, b.MouseButton, b.Device, b.Button)).ToList();
+        _wake.Set();
+    }
+
+    /// <summary>未连语音时休眠，录制仍可单独唤醒。仅扫描配置的输入。</summary>
+    public void SetMonitoring(bool enabled)
+    {
+        lock (_lock) _monitoring = enabled;
+        _wake.Set();
     }
 
     public void Start()
@@ -92,13 +107,14 @@ public sealed class PttWatcher : IDisposable
         if (_thread is not null)
             return;
         _running = true;
-        _thread = new Thread(Run) { IsBackground = true, Name = "ptt", Priority = ThreadPriority.AboveNormal };
+        _thread = new Thread(Run) { IsBackground = true, Name = "ptt" };
         _thread.Start();
     }
 
     public void Stop()
     {
         _running = false;
+        _wake.Set();
         _thread?.Join(TimeSpan.FromSeconds(1));
         _thread = null;
         if (_pressed)
@@ -117,27 +133,47 @@ public sealed class PttWatcher : IDisposable
     {
         if (id is < 0 or >= 16)
             return 0;
+        if (_joystickRead[id]) return _joystickButtons[id];
+        _joystickRead[id] = true;
         if (!_joystickPresent[id] && DateTime.UtcNow < _nextJoystickScan)
             return 0;
         var info = new JoyInfoEx { Size = Marshal.SizeOf<JoyInfoEx>(), Flags = JoyReturnButtons };
         var ok = joyGetPosEx(id, ref info) == JoyErrNoError;
         _joystickPresent[id] = ok;
-        return ok ? info.Buttons : 0;
+        return _joystickButtons[id] = ok ? info.Buttons : 0;
     }
 
-    private bool IsDown(PttBinding binding) => binding.Kind switch
+    internal static bool AnyDown(IReadOnlyList<PttBinding> bindings, Func<int, bool> keyDown, Func<int, int> joystickButtons)
     {
-        PttKind.Keyboard => binding.VirtualKey > 0 && KeyDown(binding.VirtualKey),
-        PttKind.Mouse => KeyDown(binding.MouseButton == "x2" ? VkXButton2 : VkXButton1),
-        _ => binding.Button is >= 0 and < 32 && (JoystickButtons(binding.Device) & (1 << binding.Button)) != 0
-    };
+        for (var i = 0; i < bindings.Count; i++)
+        {
+            var binding = bindings[i];
+            var down = binding.Kind switch
+            {
+                PttKind.Keyboard => binding.VirtualKey is > 0 and <= 254 && keyDown(binding.VirtualKey),
+                PttKind.Mouse => keyDown(binding.MouseButton == "x2" ? VkXButton2 : VkXButton1),
+                _ => binding.Button is >= 0 and < 32 && (joystickButtons(binding.Device) & (1 << binding.Button)) != 0
+            };
+            if (down) return true;
+        }
+        return false;
+    }
 
     private void Run()
     {
+        Func<int, bool> keyDown = KeyDown;
+        Func<int, int> joystickButtons = JoystickButtons;
         while (_running)
         {
+            var delay = Timeout.Infinite;
             try
             {
+                bool monitoring, capturing;
+                List<PttBinding> bindings;
+                lock (_lock) { monitoring = _monitoring; capturing = _capture is not null; bindings = _bindings; }
+                Array.Clear(_joystickRead);
+                Array.Clear(_joystickButtons);
+                delay = capturing || monitoring && bindings.Count > 0 ? PollMs : Timeout.Infinite;
                 // 拔掉的摇杆每 3 秒再看一次（热插拔在飞行摇杆上很常见）
                 if (DateTime.UtcNow >= _nextJoystickScan)
                 {
@@ -145,13 +181,10 @@ public sealed class PttWatcher : IDisposable
                     _nextJoystickScan = DateTime.UtcNow.AddSeconds(3);
                 }
 
-                if (_capture is not null)
+                if (capturing)
                     PollCapture();
 
-                List<PttBinding> bindings;
-                lock (_lock)
-                    bindings = _bindings;
-                var down = bindings.Any(IsDown);
+                var down = monitoring && !capturing && AnyDown(bindings, keyDown, joystickButtons);
                 if (down != _pressed)
                 {
                     _pressed = down;
@@ -169,7 +202,7 @@ public sealed class PttWatcher : IDisposable
             {
                 Log.Debug($"PTT poll raised: {e.Message}");
             }
-            Thread.Sleep(PollMs);
+            _wake.WaitOne(delay);
         }
     }
 
@@ -183,6 +216,8 @@ public sealed class PttWatcher : IDisposable
             _capture?.TrySetResult(null);
             _capture = new TaskCompletionSource<PttBinding?>(TaskCreationOptions.RunContinuationsAsynchronously);
             _captureBaseline = null;
+            _nextCaptureScan = DateTime.MinValue;
+            _wake.Set();
             if (_thread is null)
                 Start();
             return _capture.Task;
@@ -195,6 +230,7 @@ public sealed class PttWatcher : IDisposable
         {
             _capture?.TrySetResult(null);
             _capture = null;
+            _wake.Set();
         }
     }
 
@@ -215,7 +251,12 @@ public sealed class PttWatcher : IDisposable
             down["mx1"] = PttBinding.Mouse("x1");
         if (KeyDown(VkXButton2))
             down["mx2"] = PttBinding.Mouse("x2");
-        foreach (var stick in Joysticks())
+        if (DateTime.UtcNow >= _nextCaptureScan)
+        {
+            _captureJoysticks = Joysticks();
+            _nextCaptureScan = DateTime.UtcNow.AddSeconds(3);
+        }
+        foreach (var stick in _captureJoysticks)
         {
             var buttons = JoystickButtons(stick.Id);
             for (var b = 0; b < 32; b++)

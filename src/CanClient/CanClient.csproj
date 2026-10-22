@@ -6,7 +6,7 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <AssemblyName>msfs-for-can</AssemblyName>
+    <AssemblyName>can-pilot</AssemblyName>
     <RootNamespace>CanClient</RootNamespace>
   </PropertyGroup>
 
@@ -20,7 +20,9 @@
 
   <ItemGroup>
     <AvaloniaResource Include="app.ico" />
+    <AvaloniaResource Include="app-logo.png" />
     <ProjectReference Include="..\CanClient.Core\CanClient.Core.csproj" />
+    <None Update="**\can-pilot.debug.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
   <Target Name="ExcludeNativeDebugSymbolsFromSingleFilePublish" AfterTargets="ComputeFilesToPublish"

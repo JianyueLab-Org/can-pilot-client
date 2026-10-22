@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using CanClient.Core.ModelMatching;
 using Avalonia.Threading;
 using CanClient.Core;
 using CanClient.Core.Fsd;
@@ -29,6 +30,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             ControllerGroups.Add(new ControllerGroup(name));
 
         MainTab = CreateTab("消息", isClosable: false);
+        NoteTab = CreateTab("Note", isClosable: false, isLocalNote: true);
         SelectedTab = MainTab;
         Callsign = controller.Settings.Callsign;
         TypeCode = controller.Settings.Aircraft;
@@ -82,6 +84,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<ControllerGroup> ControllerGroups { get; } = [];
     public ObservableCollection<ChatTabViewModel> Tabs { get; } = [];
     public ChatTabViewModel MainTab { get; }
+    public ChatTabViewModel NoteTab { get; }
 
     [ObservableProperty] private ChatTabViewModel? _selectedTab;
 
@@ -96,6 +99,30 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private string _typeCode = string.Empty;
     [ObservableProperty] private bool _isModeC = true;
     [ObservableProperty] private bool _isIdent;
+    [ObservableProperty] private bool _showSimulatorChoice;
+    [ObservableProperty] private bool _canChooseSimulator;
+    [ObservableProperty] private IReadOnlyList<string> _runningSimulatorChoices = [];
+    [ObservableProperty] private string? _selectedRunningSimulator;
+    private bool _updatingSimulatorChoice;
+
+    partial void OnSelectedRunningSimulatorChanged(string? value)
+    {
+        if (_updatingSimulatorChoice || value is null) return;
+        var simulator = _controller.Sim.AvailableSimulators.FirstOrDefault(s => s.DisplayName() == value);
+        if (simulator != SimulatorType.None) _controller.Sim.ChooseSimulator(simulator);
+    }
+
+    private void RefreshSimulatorChoice()
+    {
+        var sim = _controller.Sim;
+        ShowSimulatorChoice = sim.MultipleSimulators;
+        CanChooseSimulator = !_controller.IsConnected;
+        var choices = sim.AvailableSimulators.Select(s => s.DisplayName()).ToArray();
+        _updatingSimulatorChoice = true;
+        if (!RunningSimulatorChoices.SequenceEqual(choices)) RunningSimulatorChoices = choices;
+        SelectedRunningSimulator = sim.NeedsSelection || !ShowSimulatorChoice ? null : sim.Simulator.DisplayName();
+        _updatingSimulatorChoice = false;
+    }
     [ObservableProperty] private string _fsdConnectionText = "FSD：未连接";
     [ObservableProperty] private string _voiceConnectionText = "语音：未连接";
     [ObservableProperty] private string _fsdConnectionDetail = "尚未连接 FSD 服务器";
@@ -112,7 +139,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     /// <summary>呼号旁边那行小字：模型扫描进度优先，其次是模拟器连没连上。</summary>
     public string StatusText => ScanStatus.Length > 0 ? ScanStatus
-        : SimConnected ? $"{_controller.Sim.ApplicationName}" : "等待 MSFS";
+        : SimConnected ? $"{_controller.Sim.ApplicationName}" : "等待模拟器";
     [ObservableProperty] private string _windowTitle = $"{AppVersion.ClientName} {AppVersion.Display}";
 
     private bool _suppressModeC;
@@ -193,6 +220,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void OnOwnState(OwnAircraftState? state)
     {
+        RefreshSimulatorChoice();
         RefreshConnectionStatus();
         IsIdent = _controller.IsIdentifying;
         UpdateTransmitIndicators(_controller.Voice?.Transmitting ?? false);
@@ -318,9 +346,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             value.HasUnread = false;
     }
 
-    private ChatTabViewModel CreateTab(string header, bool isClosable)
+    private ChatTabViewModel CreateTab(string header, bool isClosable, bool isLocalNote = false)
     {
-        var tab = new ChatTabViewModel(header, isClosable);
+        var tab = new ChatTabViewModel(header, isClosable, isLocalNote);
         tab.Submitted += OnTabSubmitted;
         Tabs.Add(tab);
         return tab;
@@ -346,6 +374,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void OnTabSubmitted(ChatTabViewModel tab, string text)
     {
+        if (tab.IsLocalNote)
+        {
+            // 在命令解析和所有网络路径之前拦截，连 .wallop / .com1 也只作为笔记文字。
+            tab.Add(new ChatMessage(MessageKind.System, string.Empty, text));
+            return;
+        }
         if (text.StartsWith('.') && !text.StartsWith(".wallop", StringComparison.OrdinalIgnoreCase))
         {
             HandleCommand(text);

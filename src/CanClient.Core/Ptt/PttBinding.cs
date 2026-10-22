@@ -45,6 +45,7 @@ public sealed record PttBinding(PttKind Kind, int VirtualKey = 0, string Key = "
         PttKind.Mouse => other.Kind == PttKind.Mouse && other.MouseButton == MouseButton,
         _ => other.Kind == PttKind.Joystick && other.Device == Device && other.Button == Button
     };
+    public string Label => Describe();
 }
 
 internal sealed class PttBindingConverter : JsonConverter<PttBinding>

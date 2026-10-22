@@ -35,6 +35,8 @@
     <None Include="..\..\rnnoise.dll" Link="rnnoise.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\rnnoise.dll')" />
     <None Include="..\..\RNNOISE-COPYING" Link="RNNOISE-COPYING" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\RNNOISE-COPYING')" />
     <None Include="..\..\data\ModelMatchingData.bin" Link="ModelMatchingData.bin" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\native\XPC_for_CAN-plugin.zip" Link="XPC_for_CAN-plugin.zip" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\native\XPC_for_CAN-plugin.zip')" />
+    <None Include="..\..\native\XPLANE-NOTICES.md" Link="XPLANE-NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

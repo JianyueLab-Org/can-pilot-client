@@ -74,6 +74,15 @@ public sealed class AppSettings
     [JsonPropertyName("fsd_port")] public int FsdPortNumber { get; set; } = FsdPort;
     [JsonPropertyName("connect_fsd")] public bool ConnectFsd { get; set; } = true;
     [JsonPropertyName("connect_voice")] public bool ConnectVoice { get; set; } = true;
+    // 模拟器接入选择和 X-Plane 原生交通插件。
+    [JsonPropertyName("simulator_connection")] public string SimulatorConnection { get; set; } = "Auto";
+    [JsonPropertyName("show_all_simulators")] public bool ShowAllSimulators { get; set; }
+    [JsonPropertyName("msfs2020_packages_path")] public string Msfs2020PackagesPath { get; set; } = "";
+    [JsonPropertyName("msfs2024_packages_path")] public string Msfs2024PackagesPath { get; set; } = "";
+    [JsonPropertyName("xplane_path")] public string XPlanePath { get; set; } = "";
+    [JsonPropertyName("csl_path")] public string CslPath { get; set; } = "";
+    [JsonPropertyName("xplane_host")] public string XPlaneHost { get; set; } = "";
+    [JsonPropertyName("xplane_port")] public int XPlanePort { get; set; } = 49000;
 
     // —— 观察员（双人机组的右座：只连语音，不连 FSD） ——
     [JsonPropertyName("observer_mode")] public bool ObserverMode { get; set; }

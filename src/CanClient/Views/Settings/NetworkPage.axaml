@@ -21,14 +21,14 @@
 
     <TextBlock Classes="label" Text="FSD 服务器" />
     <ComboBox ItemsSource="{Binding FsdServers}" SelectedItem="{Binding SelectedFsdServer}" HorizontalAlignment="Stretch" />
-    <Grid ColumnDefinitions="*,96" ColumnSpacing="{DynamicResource Space.Sm}" Margin="0,4,0,0">
+    <Grid x:Name="FsdEndpointEditor" IsVisible="{Binding ShowServerEndpoints}" ColumnDefinitions="*,96" ColumnSpacing="{DynamicResource Space.Sm}" Margin="0,4,0,0">
       <TextBox Classes="mono" Text="{Binding FsdHost}" PlaceholderText="地址" />
       <NumericUpDown Grid.Column="1" Minimum="1" Maximum="65535" FormatString="0" Value="{Binding FsdPort}" />
     </Grid>
 
     <TextBlock Classes="label" Text="语音服务器" />
     <ComboBox ItemsSource="{Binding VoiceServers}" SelectedItem="{Binding SelectedVoiceServer}" HorizontalAlignment="Stretch" />
-    <Grid ColumnDefinitions="*,96" ColumnSpacing="{DynamicResource Space.Sm}" Margin="0,4,0,0">
+    <Grid x:Name="VoiceEndpointEditor" IsVisible="{Binding ShowServerEndpoints}" ColumnDefinitions="*,96" ColumnSpacing="{DynamicResource Space.Sm}" Margin="0,4,0,0">
       <TextBox Classes="mono" Text="{Binding VoiceHost}" PlaceholderText="地址" />
       <NumericUpDown Grid.Column="1" Minimum="1" Maximum="65535" FormatString="0" Value="{Binding VoicePort}" />
     </Grid>

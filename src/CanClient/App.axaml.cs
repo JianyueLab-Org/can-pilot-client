@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Controls;
+using Avalonia.Platform;
 using CanClient.Core;
 using CanClient.Core.Settings;
 using CanClient.Core.Util;
@@ -13,7 +15,12 @@ public partial class App : Application
 {
     public static ClientController Controller { get; private set; } = null!;
 
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+        using var logo = AssetLoader.Open(new Uri("avares://can-pilot/app-logo.png"));
+        Resources["CanLogo"] = new Avalonia.Media.Imaging.Bitmap(logo);
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
