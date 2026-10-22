@@ -1,7 +1,7 @@
 # 在本地构建自包含单文件 Windows x64 客户端（包括麦克风降噪，无需安装 .NET）。
 #   pwsh -File build.ps1               输出到 dist/can-pilot
 #   pwsh -File build.ps1 -SkipRnnoise  不构建 RNNoise（没装 CMake / MSVC 时）
-# 发布版本号：构建前设置 $env:CAN_VERSION = "0.0.2"；不设就按开发版处理。
+# 发布版本号：构建前设置 $env:CAN_VERSION = "0.0.3"；不设就按开发版处理。
 param([switch]$SkipRnnoise, [string]$Out = "$PSScriptRoot/dist/can-pilot")
 $ErrorActionPreference = "Stop"
 

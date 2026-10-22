@@ -24,7 +24,7 @@ pwsh -File build.ps1                        # 构建 RNNoise、准备 X-Plane �
 
 构建脚本采用 .NET 10 Windows x64 自包含单文件发布，无需安装 .NET；托管依赖和原生 DLL 打进 EXE，
 原生库在运行时自动解压到 .NET 缓存。分发整个 `dist/can-pilot/`（EXE、MSFS 模型库、X-Plane 插件压缩包、许可证及来源说明），入口为 `can-pilot.exe`。正式版本号在构建前设置
-`$env:CAN_VERSION = "0.0.2"`；不设置时按开发版显示（报下一个补丁号并标注“开发版”）。
+`$env:CAN_VERSION = "0.0.3"`；不设置时按开发版显示（报下一个补丁号并标注“开发版”）。
 C# 版本从 `0.0.1` 开始独立编号。GitHub 预发布也可使用相同的完整版本号，程序标题和版本检查与发布包保持一致。
 
 设置保存在程序目录的 `msfs_settings.json`（与旧 Python 版格式兼容，老配置可直接读入），
@@ -98,6 +98,8 @@ python tools/package-xplane-plugin.py --source "路径/xpc-for-can-0.0.1-win-x64
 低配电脑还可在“性能”页降低他机数量和显示距离；不需要他机时关闭渲染。手动指定模拟器可避免不需要的探测连接。
 
 输入 `.help` 查看命令：`.com1` `.com2` `.x` `.chat` `.msg` `.atis` `.metar` `.wallop` `.match` `.clear`。
+
+飞行计划支持两种填写方式：在客户端“飞行计划”窗口内填写提交，或点击窗口顶部“网页版飞行计划 ↗”，自动用默认浏览器打开 https://ceruleanavi.net/pilots/flightplan ，通过 CAN 网站填写和管理。
 
 ### Note 本地随手记
 

@@ -5,6 +5,12 @@
              x:DataType="vm:FlightPlanViewModel"
              Width="560">
   <StackPanel>
+    <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,8">
+      <Button Content="网页版飞行计划 ↗" Click="OnOpenWebFlightPlanClick" />
+      <TextBlock Classes="caption" VerticalAlignment="Center" Text="也可通过 CAN 网站填写和管理飞行计划" />
+    </StackPanel>
+    <TextBlock x:Name="WebFlightPlanError" Classes="caption" TextWrapping="Wrap" IsVisible="False"
+               Foreground="{DynamicResource Brush.Warning}" Margin="0,0,0,8" />
     <Grid ColumnDefinitions="1.4*,*,*,*" ColumnSpacing="{DynamicResource Space.Md}">
       <StackPanel>
         <TextBlock Classes="label" Text="飞行规则" />
