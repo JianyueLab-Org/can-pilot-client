@@ -12,7 +12,7 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <!-- 正式版本号由 CI 通过 CAN_VERSION 传入；本地构建按开发版处理。 -->
     <Version Condition="'$(CAN_VERSION)' != ''">$(CAN_VERSION)</Version>
-    <Version Condition="'$(CAN_VERSION)' == ''">2.2.0</Version>
+    <Version Condition="'$(CAN_VERSION)' == ''">2.2.35</Version>
     <CanReleaseBuild Condition="'$(CAN_VERSION)' != ''">true</CanReleaseBuild>
     <CanReleaseBuild Condition="'$(CAN_VERSION)' == ''">false</CanReleaseBuild>
     <Company>JianyueLab</Company>
