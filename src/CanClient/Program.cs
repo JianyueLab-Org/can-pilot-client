@@ -21,6 +21,11 @@ internal static class Program
             Log.For("uncaught").Critical($"the application crashed: {e}");
             throw;
         }
+        finally
+        {
+            Log.For("shutdown").Info("application exited");
+            Log.Close();
+        }
     }
 
     public static AppBuilder BuildAvaloniaApp()

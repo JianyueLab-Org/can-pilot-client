@@ -36,10 +36,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         controller.MessageAdded += m => Ui(() => OnMessage(m));
         controller.ConnectionChanged += () => Ui(OnConnectionChanged);
         controller.ControllersChanged += list => Ui(() => OnControllers(list));
-        controller.TransmittingChanged += v => Ui(() => Com1.IsTransmitting = v);
-        controller.ReceivingChanged += v => Ui(() => Com1.IsReceiving = v);
+        controller.TransmittingChanged += v => Ui(() => UpdateTransmitIndicators(v));
+        controller.RadioReceivingChanged += (radio, v) => Ui(() =>
+        {
+            if (radio == 1) Com1.IsReceiving = v;
+            else if (radio == 2) Com2.IsReceiving = v;
+        });
         controller.OwnStateChanged += s => Ui(() => OnOwnState(s));
         controller.ModeCChanged += v => Ui(() => SetModeCFromController(v));
+        controller.FsdStatusChanged += (state, message) => Ui(() =>
+        {
+            _fsdLinkState = state;
+            FsdConnectionDetail = message;
+            RefreshConnectionStatus();
+        });
+        controller.VoiceStatusChanged += (state, message) => Ui(() =>
+        {
+            _voiceLinkState = state;
+            VoiceConnectionDetail = message;
+            RefreshConnectionStatus();
+        });
         controller.SimStateChanged += (connected, _) => Ui(() => SimConnected = connected);
         controller.AttentionRequested += reason => Ui(() => AttentionRequested?.Invoke(reason));
         controller.Models.ScanProgressChanged += p => Ui(() => ScanStatus = p.Stage);
@@ -80,6 +96,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private string _typeCode = string.Empty;
     [ObservableProperty] private bool _isModeC = true;
     [ObservableProperty] private bool _isIdent;
+    [ObservableProperty] private string _fsdConnectionText = "FSD：未连接";
+    [ObservableProperty] private string _voiceConnectionText = "语音：未连接";
+    [ObservableProperty] private string _fsdConnectionDetail = "尚未连接 FSD 服务器";
+    [ObservableProperty] private string _voiceConnectionDetail = "尚未连接语音服务器";
+    private string _fsdLinkState = "Stopped";
+    private string _voiceLinkState = "Stopped";
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText))]
     private bool _simConnected;
@@ -124,9 +146,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         IsConnected = _controller.IsConnected;
         if (!IsConnected)
         {
+            _fsdLinkState = "Stopped";
+            _voiceLinkState = "Stopped";
+            FsdConnectionDetail = "FSD 连接已断开";
+            VoiceConnectionDetail = "语音连接已断开";
+        }
+        RefreshConnectionStatus();
+        if (!IsConnected)
+        {
             IsIdent = false;
             Com1.IsTransmitting = false;
             Com1.IsReceiving = false;
+            Com2.IsTransmitting = false;
+            Com2.IsReceiving = false;
             foreach (var group in ControllerGroups)
                 group.Stations.Clear();
             RefreshGroups();
@@ -146,9 +178,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _suppressModeC = false;
     }
 
-    // 允许并发执行，避免识别期间按钮变为禁用（看不到高亮状态）
-    [RelayCommand(AllowConcurrentExecutions = true)]
-    private async Task Ident()
+    [RelayCommand]
+    private void Ident()
     {
         if (IsIdent)
             return;
@@ -158,12 +189,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
         IsIdent = true;
-        await Task.Delay(TimeSpan.FromSeconds(8));
-        IsIdent = false;
     }
 
     private void OnOwnState(OwnAircraftState? state)
     {
+        RefreshConnectionStatus();
+        IsIdent = _controller.IsIdentifying;
+        UpdateTransmitIndicators(_controller.Voice?.Transmitting ?? false);
         SimConnected = _controller.Sim.Connected;
         if (state is null)
         {
@@ -180,6 +212,43 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Com2.Frequency = state.Com2?.ToString("F3") ?? "---.---";
         TransponderCode = state.Squawk.ToString("D4");
     }
+
+    private void UpdateTransmitIndicators(bool transmitting)
+    {
+        var radio = _controller.TransmitRadio;
+        // 先熄灭旧灯，切换 TX 时也不会出现两个同时亮起。
+        Com1.IsTransmitting = false;
+        Com2.IsTransmitting = false;
+        Com1.IsTransmitEnabled = radio == 1;
+        Com2.IsTransmitEnabled = radio == 2;
+        if (transmitting && radio == 1) Com1.IsTransmitting = true;
+        else if (transmitting && radio == 2) Com2.IsTransmitting = true;
+    }
+
+    private void RefreshConnectionStatus()
+    {
+        var fsd = _controller.Fsd;
+        var voice = _controller.Voice;
+        FsdConnectionText = _controller.IsConnected && _controller.IsObserver
+            ? "FSD：观察员模式"
+            : _controller.IsConnected && !_controller.Settings.ConnectFsd ? "FSD：未启用"
+            : $"FSD：{ConnectionStateText(fsd?.Connected == true ? "Online" : _fsdLinkState == "Online" && fsd is not null ? "Reconnecting" : _fsdLinkState, fsd is not null)}";
+        var state = ConnectionStateText(voice?.Connected == true ? "Online" : _voiceLinkState == "Online" && voice is not null ? "Reconnecting" : _voiceLinkState, voice is not null);
+        VoiceConnectionText = _controller.IsConnected && !_controller.IsObserver && !_controller.Settings.ConnectVoice
+            ? "语音：未启用"
+            : $"语音：{state}" + (voice?.Connected == true ? $" · {voice.TransportDescription}" : "");
+    }
+
+    internal static string ConnectionStateText(string state, bool present) => state switch
+    {
+        "Online" => present ? "已连接" : "已断开",
+        "Connecting" => "连接中",
+        "Reconnecting" => "重连中",
+        "Error" => "连接错误",
+        "Offline" => "已下线",
+        "Denied" => present ? "服务器拒绝操作" : "已断开",
+        _ => present ? "连接中" : "未连接"
+    };
 
     // ---------- 管制员 ----------
 
@@ -418,11 +487,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                     AddSystem($"已经是最新版本（{AppVersion.Display}）。");
                 return;
             }
-            if (!manual && update.Version == _controller.Settings.SkippedVersion)
-            {
-                AddSystem($"[更新] 有新版 {update.Version}（已跳过）");
-                return;
-            }
+            AddSystem($"[版本提醒] 当前版本 {AppVersion.Display}，有新版本 {update.Version}，请通过独立更新器更新。");
             UpdateFound?.Invoke(update);
         });
     }

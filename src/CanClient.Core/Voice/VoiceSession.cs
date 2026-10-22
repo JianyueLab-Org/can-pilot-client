@@ -15,7 +15,7 @@ public sealed class VoiceOptions
 }
 
 /// <summary>
-/// 一条 Mumble 语音连接，跟着 COM1 走。对应 Python 版 voice.py。
+/// 一条 Mumble 语音连接，加入机模选择的 TX 频道，另一电台用频道监听接收。
 ///
 /// 频率到频道的换算是全网统一的约定，改了会同时打断飞行员、管制和 ATIS：
 ///     FREQ_{int(round(频率 * 1000)):06d}      125.400 → FREQ_125400
@@ -66,6 +66,15 @@ public sealed class VoiceSession : IDisposable
     private string? _denial;
     private string _stuckReason = "";
     private double? _pending;
+    private readonly object _listenerLock = new();
+    private double? _pendingListener;
+    private double? _com1;
+    private double? _com2;
+    private bool _com1Receive = true;
+    private bool _com2Receive;
+    private int _transmitRadio = 1;
+    private readonly long[] _radioLastRx = new long[2];
+    private readonly bool[] _radioReceiving = new bool[2];
 
     // 发送
     private OpusEncoder? _encoder;
@@ -101,6 +110,7 @@ public sealed class VoiceSession : IDisposable
     public event Action<LinkState, string>? StatusChanged;
     public event Action<bool>? TransmittingChanged;
     public event Action<bool>? ReceivingChanged;
+    public event Action<int, bool>? RadioReceivingChanged;
     /// <summary>进了某个频率的频道（频率, 频道名）。</summary>
     public event Action<double, string>? ChannelChanged;
     /// <summary>处理后的麦克风峰值（0..1），每帧一次。</summary>
@@ -111,6 +121,7 @@ public sealed class VoiceSession : IDisposable
     public bool GaveUp { get; private set; }
     public bool Transmitting => _transmitting;
     public bool Receiving => _receiving;
+    public int TransmitRadio { get { lock (_listenerLock) return _transmitRadio; } }
 
     public bool Connected
     {
@@ -130,8 +141,8 @@ public sealed class VoiceSession : IDisposable
             if (connection is null)
                 return "";
             return connection.UdpActive
-                ? $"UDP {connection.UdpPingAverage:F0} ms"
-                : $"TCP {connection.TcpPingAverage:F0} ms";
+                ? $"UDP {(connection.UdpPingCount > 0 ? connection.UdpPingAverage.ToString("F0") : "--")} ms"
+                : $"TCP {(connection.TcpPingCount > 0 ? connection.TcpPingAverage.ToString("F0") : "--")} ms";
         }
     }
 
@@ -229,6 +240,17 @@ public sealed class VoiceSession : IDisposable
         {
             _receiving = false;
             ReceivingChanged?.Invoke(false);
+        }
+        lock (_radioReceiving)
+        {
+            for (var i = 0; i < 2; i++)
+            {
+                _radioLastRx[i] = 0;
+                if (!_radioReceiving[i])
+                    continue;
+                _radioReceiving[i] = false;
+                RadioReceivingChanged?.Invoke(i + 1, false);
+            }
         }
     }
 
@@ -340,6 +362,7 @@ public sealed class VoiceSession : IDisposable
             "NestingLimit" => "频道层级超过了服务器上限",
             "ChannelCountLimit" => "服务器上的频道数已达上限",
             "UserListenerLimit" => "服务器限制了每个用户能监听的频道数",
+            "ChannelListenerLimit" => "服务器限制了这个频道的监听人数",
             _ => $"服务器拒绝了操作：{kind}"
         };
         if (reason.Length > 0)
@@ -361,16 +384,62 @@ public sealed class VoiceSession : IDisposable
 
     // ---------- 频率 ----------
 
-    /// <summary>COM1 变了。立刻返回，真正的切换在工作线程上。</summary>
+    /// <summary>单频兼容入口（观察员/旧调用方）。真正的切换在工作线程上。</summary>
     public void SetFrequency(double? frequency)
     {
         if (frequency is null)
             return;
-        var value = Math.Round(frequency.Value, 3);
-        if (_pending == value)
-            return;
-        _pending = value;
+        SetRadios(frequency, true, null, false, 1);
+    }
+
+    /// <summary>一次同步两个电台和互斥的 TX 选择。无 TX 时保留接收，禁止发话。</summary>
+    public void SetRadios(double? com1, bool receive1, double? com2, bool receive2, int transmitRadio)
+    {
+        com1 = Sim.SimConnection.Frequency(com1);
+        com2 = Sim.SimConnection.Frequency(com2);
+        transmitRadio = transmitRadio is 1 or 2 ? transmitRadio : 0;
+        lock (_listenerLock)
+        {
+            if (_com1 == com1 && _com2 == com2 && _com1Receive == receive1 &&
+                _com2Receive == receive2 && _transmitRadio == transmitRadio)
+                return;
+            _com1 = com1;
+            _com2 = com2;
+            _com1Receive = receive1;
+            _com2Receive = receive2;
+            _transmitRadio = transmitRadio;
+            var primary = transmitRadio == 2 ? 2 : transmitRadio == 1 ? 1
+                : receive1 && com1 is not null ? 1 : 2;
+            _pending = primary == 1 ? com1 : com2;
+            _pendingListener = primary == 1 ? receive2 ? com2 : null : receive1 ? com1 : null;
+            Log.Info($"radios: COM1={com1?.ToString("F3", CultureInfo.InvariantCulture) ?? "off"} RX={receive1}; " +
+                     $"COM2={com2?.ToString("F3", CultureInfo.InvariantCulture) ?? "off"} RX={receive2}; TX=COM{transmitRadio}");
+        }
         _channelWanted.Set();
+    }
+
+    private void SyncListener(MumbleConnection connection)
+    {
+        double? target;
+        lock (_listenerLock)
+            target = _pendingListener;
+        var name = target is { } frequency ? ChannelName(frequency) : null;
+        // 先撤旧监听，再解析新频道，避免调频后仍收到旧频率。
+        var channel = name is null ? null : connection.FindChannel(name);
+        connection.SetListeningChannels(channel is not null && channel.Id != connection.Myself?.ChannelId
+            ? [channel.Id] : []);
+        if (name is null || channel is not null)
+            return;
+        _denial = null;
+        connection.CreateChannel(name);
+        channel = WaitForChannel(connection, name);
+        lock (_listenerLock)
+        {
+            if (_pendingListener != target)
+                return;
+        }
+        if (channel is not null && channel.Id != connection.Myself?.ChannelId)
+            connection.SetListeningChannels([channel.Id]);
     }
 
     private void NoteStuck(string reason)
@@ -388,32 +457,37 @@ public sealed class VoiceSession : IDisposable
             _channelWanted.WaitOne(TimeSpan.FromSeconds(ChannelRetryInterval));
             if (!_running)
                 break;
-            var target = _pending;
             var connection = _connection;
-            if (target is null)
-            {
-                NoteStuck("no COM1 frequency yet");
-                continue;
-            }
             if (connection is not { Synced: true })
             {
                 NoteStuck("the voice server is not connected yet");
                 continue;
             }
-            if (target == Frequency)
-            {
-                if (InExpectedChannel(connection))
-                {
-                    _stuckReason = "";
-                    continue;
-                }
-                Log.Warning($"the server no longer has us in {Channel} (most likely a reconnect), rejoining");
-                Frequency = null;
-                Channel = null;
-            }
             try
             {
-                SwitchChannel(connection, target.Value);
+                double? target;
+                lock (_listenerLock)
+                    target = _pending;
+                if (target is not null)
+                {
+                    if (!InExpectedChannel(connection))
+                    {
+                        Frequency = null;
+                        Channel = null;
+                    }
+                    SwitchChannel(connection, target.Value);
+                }
+                SyncListener(connection);
+                // Murmur 新建临时频道时可能自动把创建者移进去，立即恢复 TX 主频道。
+                lock (_listenerLock)
+                    target = _pending;
+                if (target is not null && (!InExpectedChannel(connection) || Frequency != target))
+                {
+                    Frequency = null;
+                    Channel = null;
+                    SwitchChannel(connection, target.Value);
+                    SyncListener(connection);
+                }
             }
             catch (Exception e)
             {
@@ -594,6 +668,14 @@ public sealed class VoiceSession : IDisposable
             Skip("还留在根频道（频率频道没切成功），发出去没人听得到");
             return;
         }
+        lock (_listenerLock)
+        {
+            if (_transmitRadio == 0 || _pending is null || Frequency != _pending || !InExpectedChannel(connection))
+            {
+                Skip("TX 电台未选择或频率尚未同步");
+                return;
+            }
+        }
 
         if (!_wasTransmitting)
         {
@@ -622,29 +704,48 @@ public sealed class VoiceSession : IDisposable
         {
             if (_encoder is null)
                 return false;
+            lock (_listenerLock)
+            {
+                if (_transmitRadio == 0 || _pending is null || Frequency != _pending || !InExpectedChannel(connection))
+                    return false;
+            }
             _encoder.Bitrate = connection.EncoderBitrate();
             opus = _encoder.Encode(samples);
-        }
-        try
-        {
-            connection.SendAudio(opus, _sequence, terminator);
-            _sequence += 2;     // 一帧 20 ms，帧号按 10 ms 计
-            _lastPacket = Stopwatch.GetTimestamp();
-            return true;
-        }
-        catch (Exception e)
-        {
-            Skip($"发送失败：{e.Message}");
-            return false;
+            try
+            {
+                connection.SendAudio(opus, _sequence, terminator);
+                _sequence += 2;     // 一帧 20 ms，帧号按 10 ms 计
+                _lastPacket = Stopwatch.GetTimestamp();
+                return true;
+            }
+            catch (Exception e)
+            {
+                Skip($"发送失败：{e.Message}");
+                return false;
+            }
         }
     }
 
     // ---------- 接收 ----------
 
-    private void OnAudio(uint session, ulong frameNumber, byte[] opus, bool terminator)
+    private void OnAudio(uint session, ulong frameNumber, byte[] opus, bool terminator, uint context)
     {
         var connection = _connection;
         if (connection is null || session == connection.MySession)
+            return;
+        bool com1, com2;
+        var senderChannel = connection.User(session)?.ChannelId;
+        lock (_listenerLock)
+        {
+            // 普通语音按发送者频道归属；whisper 的发送者可以在其他频道，用包上下文判断目标。
+            var channel = context == 3 ? _pendingListener : Frequency;
+            var channelId = channel is { } f ? connection.FindChannel(ChannelName(f))?.Id : null;
+            if (context is 0 or 3 && senderChannel is { } id && id != channelId)
+                return;
+            com1 = _com1Receive && _com1 is not null && channel == _com1;
+            com2 = _com2Receive && _com2 is not null && channel == _com2;
+        }
+        if (!com1 && !com2)
             return;
         try
         {
@@ -654,6 +755,20 @@ public sealed class VoiceSession : IDisposable
             if (samples <= 0)
                 return;
             Interlocked.Exchange(ref _lastRx, Stopwatch.GetTimestamp());
+            lock (_radioReceiving)
+            {
+                for (var i = 0; i < 2; i++)
+                {
+                    var active = i == 0 ? com1 : com2;
+                    if (!active)
+                        continue;
+                    _radioLastRx[i] = Stopwatch.GetTimestamp();
+                    if (_radioReceiving[i])
+                        continue;
+                    _radioReceiving[i] = true;
+                    RadioReceivingChanged?.Invoke(i + 1, true);
+                }
+            }
             if (!_receiving)
             {
                 _receiving = true;
@@ -674,6 +789,16 @@ public sealed class VoiceSession : IDisposable
         while (_running)
         {
             Thread.Sleep(50);
+            lock (_radioReceiving)
+            {
+                for (var i = 0; i < 2; i++)
+                {
+                    if (!_radioReceiving[i] || Stopwatch.GetElapsedTime(_radioLastRx[i]).TotalSeconds <= RxTimeout)
+                        continue;
+                    _radioReceiving[i] = false;
+                    RadioReceivingChanged?.Invoke(i + 1, false);
+                }
+            }
             if (!_receiving)
                 continue;
             var last = Interlocked.Read(ref _lastRx);

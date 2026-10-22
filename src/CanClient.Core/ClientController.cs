@@ -46,7 +46,7 @@ public sealed record AircraftRow(
 /// <summary>
 /// 客户端的总调度，对应 Python 版 gui.py 里不碰界面的那一半：
 ///
-///   SimConnect ──本机状态──▶ FSD（5 Hz 位置）、语音（跟着 COM1 切频道）
+///   SimConnect ──本机状态──▶ FSD（5 Hz 位置）、语音（跟随机模 COM1/COM2 RX 和互斥 TX）
 ///   FSD ──他机位置/机型──▶ TrafficTable ──▶ 模型匹配 ──▶ 注入循环 ──▶ SimConnect AI 飞机
 ///   PTT ──▶ 语音发送
 ///
@@ -117,6 +117,7 @@ public sealed class ClientController : IDisposable
     public string Callsign => _callsign;
     public string TypeCode => _typeCode;
     public bool ModeC => _modeC;
+    public bool IsIdentifying => Fsd?.IsIdentifying ?? Own?.TransponderIdent == true;
     public OwnAircraftState? Own { get; private set; }
 
     public event Action<ClientMessage>? MessageAdded;
@@ -124,6 +125,7 @@ public sealed class ClientController : IDisposable
     public event Action<IReadOnlyList<ControllerInfo>>? ControllersChanged;
     public event Action<bool>? TransmittingChanged;
     public event Action<bool>? ReceivingChanged;
+    public event Action<int, bool>? RadioReceivingChanged;
     public event Action<OwnAircraftState?>? OwnStateChanged;
     public event Action<bool>? ModeCChanged;
     public event Action<bool, string>? SimStateChanged;
@@ -220,10 +222,10 @@ public sealed class ClientController : IDisposable
         voice.StatusChanged += (state, message) => OnVoiceStatus(voice, state, message);
         voice.TransmittingChanged += value => { if (voice == Voice) TransmittingChanged?.Invoke(value); };
         voice.ReceivingChanged += value => { if (voice == Voice) ReceivingChanged?.Invoke(value); };
+        voice.RadioReceivingChanged += (radio, value) => { if (voice == Voice) RadioReceivingChanged?.Invoke(radio, value); };
         voice.ChannelChanged += (frequency, name) => Post(MessageKind.System, $"语音已进入 {frequency:F3}（{name}）");
         Voice = voice;
-        if (CurrentFrequency() is { } frequency)
-            voice.SetFrequency(frequency);
+        SyncVoiceRadios();
         ThreadPool.QueueUserWorkItem(_ => voice.Start());
     }
 
@@ -247,6 +249,8 @@ public sealed class ClientController : IDisposable
         ControllersChanged?.Invoke([]);
         TransmittingChanged?.Invoke(false);
         ReceivingChanged?.Invoke(false);
+        RadioReceivingChanged?.Invoke(1, false);
+        RadioReceivingChanged?.Invoke(2, false);
         Post(MessageKind.System, "已与网络断开连接。");
         ConnectionChanged?.Invoke();
     }
@@ -294,6 +298,8 @@ public sealed class ClientController : IDisposable
             Voice = null;
             TransmittingChanged?.Invoke(false);
             ReceivingChanged?.Invoke(false);
+            RadioReceivingChanged?.Invoke(1, false);
+            RadioReceivingChanged?.Invoke(2, false);
             if (Settings.FlashOnDisconnect)
                 AttentionRequested?.Invoke("disconnected");
             LinkGone(state == LinkState.Offline ? "语音已下线，网络连接保持；要恢复语音请断开后重新连接。" : null);
@@ -390,6 +396,15 @@ public sealed class ClientController : IDisposable
     private double? CurrentFrequency() =>
         Observer.FrequencyFor(Own?.Com1, Own?.Com1Power ?? true, Settings.ObserverFrequency, _observer);
 
+    public int TransmitRadio => _observer ? 1 : Own?.TransmitRadio ?? 0;
+
+    private void SyncVoiceRadios()
+    {
+        var own = Own;
+        Voice?.SetRadios(CurrentFrequency(), _observer || (own?.Com1Receiving ?? false),
+            own is { Com2Power: true } ? own.Com2 : null, own?.Com2Receiving ?? false, TransmitRadio);
+    }
+
     private void Tick()
     {
         var own = BuildOwnState();
@@ -400,7 +415,7 @@ public sealed class ClientController : IDisposable
         fsd?.UpdatePosition(own);
         fsd?.PruneControllers(ControllerMaxAge);
         // 语音频率每一拍都跟一次，不挂在"读到了模拟器数据"下面：观察员多半没开模拟器
-        Voice?.SetFrequency(CurrentFrequency());
+        SyncVoiceRadios();
 
         foreach (var callsign in Traffic.Prune())
         {
@@ -638,7 +653,7 @@ public sealed class ClientController : IDisposable
                 return "没有连模拟器，只能设置 COM1 的手动频率。";
             Settings.ObserverFrequency = Observer.FormatFrequency(frequency);
             Settings.Save();
-            Voice?.SetFrequency(CurrentFrequency());
+            SyncVoiceRadios();
             return null;
         }
         return Sim.TuneCom(radio, frequency) ? null : "调频失败（模拟器没有响应）。";

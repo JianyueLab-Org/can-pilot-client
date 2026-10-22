@@ -42,9 +42,14 @@ public sealed record OwnAircraftState
     public int Squawk { get; init; } = 2000;
     public TransponderMode TransponderMode { get; init; } = TransponderMode.ModeC;
     public bool TransponderStateKnown { get; init; }
+    public bool TransponderIdent { get; init; }
     public double? Com1 { get; init; }
     public double? Com2 { get; init; }
     public bool Com1Power { get; init; } = true;
+    public bool Com1Receiving { get; init; } = true;
+    public bool Com2Power { get; init; } = true;
+    public bool Com2Receiving { get; init; } = true;
+    public int TransmitRadio { get; init; } = 1;
     public bool OnGround { get; init; }
     public double VelocityEast { get; init; }
     public double VelocityUp { get; init; }

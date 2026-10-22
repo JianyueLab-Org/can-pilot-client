@@ -23,4 +23,18 @@
     <ProjectReference Include="..\CanClient.Core\CanClient.Core.csproj" />
   </ItemGroup>
 
+  <Target Name="ExcludeNativeDebugSymbolsFromSingleFilePublish" AfterTargets="ComputeFilesToPublish"
+          Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RemovePublishedDebugSymbols" AfterTargets="Publish" Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <PublishedDebugSymbols Include="$(PublishDir)**\*.pdb" />
+    </ItemGroup>
+    <Delete Files="@(PublishedDebugSymbols)" />
+  </Target>
+
 </Project>

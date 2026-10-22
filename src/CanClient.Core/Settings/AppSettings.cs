@@ -133,7 +133,6 @@ public sealed class AppSettings
 
     // —— 更新 ——
     [JsonPropertyName("update_check")] public bool UpdateCheck { get; set; } = true;
-    [JsonPropertyName("skipped_version")] public string SkippedVersion { get; set; } = "";
     [JsonPropertyName("update_url")] public string UpdateUrl { get; set; } = "";
 
     /// <summary>老版本写进来、这个版本不认识的键，原样保留。</summary>

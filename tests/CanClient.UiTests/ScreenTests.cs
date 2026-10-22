@@ -84,6 +84,17 @@ public class ScreenTests(ITestOutputHelper output)
         main.Show();
         vm.AddSystem(".match CES5101 A320 → " + controller.Models.Match("CES5101", "A320").ModelName);
         Save(main, "01-main");
+        Assert.Equal("FSD：未连接", main.FindControl<TextBlock>("FsdConnectionStatus")!.Text);
+        Assert.Equal("语音：未连接", main.FindControl<TextBlock>("VoiceConnectionStatus")!.Text);
+        vm.FsdConnectionText = "FSD：已连接";
+        vm.VoiceConnectionText = "语音：已连接 · UDP 23 ms";
+        Save(main, "01-main-connected");
+        Assert.Equal(vm.VoiceConnectionText, main.FindControl<TextBlock>("VoiceConnectionStatus")!.Text);
+        vm.VoiceConnectionText = "语音：已连接 · TCP 41 ms";
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(vm.VoiceConnectionText, main.FindControl<TextBlock>("VoiceConnectionStatus")!.Text);
+        vm.FsdConnectionText = "FSD：未连接";
+        vm.VoiceConnectionText = "语音：未连接";
 
         var settings = new SettingsViewModel(controller);
         var window = new SettingsWindow { DataContext = settings };

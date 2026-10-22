@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -152,26 +151,12 @@ public partial class MainWindow : Window
 
     private async void OnCheckUpdateClick(object? sender, RoutedEventArgs e) => await Vm.CheckForUpdateAsync(manual: true);
 
+    private void OnOpenLogClick(object? sender, RoutedEventArgs e) => Log.OpenFolder();
+
     private async Task ShowUpdateAsync(UpdateInfo update)
     {
         var view = new UpdateView(AppVersion.Display, update);
-        var result = await ShowDialogAsync(new DialogView("软件更新", view, "下载", closeText: "以后再说", secondaryText: "跳过此版本"));
-        if (result == DialogResult.Primary)
-        {
-            var url = UpdateChecker.IsSafeUrl(update.Download) ? update.Download
-                : UpdateChecker.IsSafeUrl(update.Notes) ? update.Notes : null;
-            if (url is not null)
-            {
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-                Vm.AddSystem($"[更新] 正在浏览器里下载 {update.Version}");
-            }
-        }
-        else if (result == DialogResult.Secondary)
-        {
-            Vm.Controller.Settings.SkippedVersion = update.Version;
-            Vm.Controller.Settings.Save();
-            Vm.AddSystem($"[更新] 已跳过 {update.Version}");
-        }
+        await ShowDialogAsync(new DialogView("新版本提醒", view, null, closeText: "知道了"));
     }
 
     private async void OnAboutClick(object? sender, RoutedEventArgs e)

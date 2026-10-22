@@ -4,7 +4,7 @@ CAN 连飞网络的 Microsoft Flight Simulator（2020 / 2024）飞行员客户�
 界面基于 [can-client-ui](https://github.com/JianyueLab-Org/can-client-ui)（Avalonia，布局参考 vPilot），
 他机模型匹配按 vPilot 的做法实现。
 
-功能：SimConnect 连接、CAN FSD 联飞与文字消息、Mumble 语音（跟随 COM1 切换 `FREQ_xxxxxx` 频道，
+功能：SimConnect 连接、CAN FSD 联飞与文字消息、Mumble 语音（跟随 COM1 切换 `FREQ_xxxxxx` 频道、跟随机模 COM2 监听第二频率，
 加密 UDP、不通时退回 TCP 隧道）、他机注入与模型匹配、观察员模式、键盘 / 鼠标侧键 / 摇杆 PTT。
 
 ## 环境
@@ -18,14 +18,20 @@ CAN 连飞网络的 Microsoft Flight Simulator（2020 / 2024）飞行员客户�
 ```powershell
 dotnet run --project src/CanClient          # 从源码运行；加 -- --debug 记录调试日志
 dotnet test CanMfsClient.slnx               # 单元测试 + 界面渲染测试
-pwsh -File build.ps1                        # 构建 RNNoise、跑测试、发布到 dist/msfs-for-can
+pwsh -File build.ps1                        # 构建 RNNoise、跑测试、发布到 dist/msfs-for-can-singlefile
 ```
 
-分发整个 `dist/msfs-for-can/`，入口为 `msfs-for-can.exe`。正式版本号在构建前设置
-`$env:CAN_VERSION = "2.2.36"`；不设置时按开发版显示（报下一个补丁号并标注“开发版”）。
+构建脚本采用 .NET 10 Windows x64 自包含单文件发布，无需安装 .NET；托管依赖和原生 DLL 打进 EXE，
+原生库在运行时自动解压到 .NET 缓存。分发整个 `dist/msfs-for-can-singlefile/`（EXE、模型库、许可证），入口为 `msfs-for-can.exe`。正式版本号在构建前设置
+`$env:CAN_VERSION = "0.0.1"`；不设置时按开发版显示（报下一个补丁号并标注“开发版”）。
+C# 版本从 `0.0.1` 开始独立编号。GitHub 预发布也可使用相同的完整版本号，程序标题和版本检查与发布包保持一致。
 
 设置保存在程序目录的 `msfs_settings.json`（与旧 Python 版格式兼容，老配置可直接读入），
-日志为 `msfs-for-can.log*`。程序目录不可写时改用 `%LOCALAPPDATA%\MSFS for CAN`。
+日志单独保存在 `logs/yyyy-MM-dd.log`，例如 `logs/2026-10-23.log`。程序目录不可写时改用 `%LOCALAPPDATA%\MSFS for CAN`。
+默认自动写入日志，记录启动、连接、双电台调频与 RX/TX 选择、PTT 和异常；每天一个文件，跨日自动切换，同日重启追加写入。
+点击“⋯ → 打开日志位置”定位日志；需要协议细节时用 `msfs-for-can.exe --debug` 启动。
+
+客户端保留启动时和手动的新版本检查，发现新版本时仅提醒；下载与安装由独立更新器负责。
 
 ## 首次连接
 
@@ -33,6 +39,8 @@ pwsh -File build.ps1                        # 构建 RNNoise、跑测试、发�
 2. 设置 → 网络：填写 CID、密码，选择 FSD 和语音服务器；音频、按键通话 (PTT) 按需设置。
 3. 点击“连接”，填写呼号和机型代码。观察员模式只连语音，可以不开模拟器（用 `.com1 121.800` 设频率）。
 4. 在模拟器里调 COM1，语音会跟着切频道；按住 PTT 发话。
+5. 在机模音频面板开启 COM2 接收，即可同时监听 COM2 有效频率；调频、关闭电台或关闭接收时自动同步。PTT 发话跟随机模的 COM1/COM2 TX 选择，两个 TX 指示互斥；都未选择时禁止发话。双频同时有话音时混音播放，界面分别显示接收灯；COM1/COM2 同频时只接收一份。需要语音服务器支持 Mumble 频道监听。机模须同步标准 SimConnect COM 频率、接收和发射状态。
+6. 主窗口底部实时显示 FSD 和语音的连接状态；语音显示实际使用的 TCP / UDP 及对应的平均往返延迟（RTT，毫秒），尚无测量时显示 `-- ms`。鼠标悬停可查看最近的连接状态说明。
 
 输入 `.help` 查看命令：`.com1` `.com2` `.x` `.chat` `.msg` `.atis` `.metar` `.wallop` `.match` `.clear`。
 

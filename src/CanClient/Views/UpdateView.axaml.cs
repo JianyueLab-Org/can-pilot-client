@@ -11,6 +11,5 @@ public partial class UpdateView : UserControl
     {
         CurrentText.Text = current;
         NewText.Text = update.Version;
-        SizeText.Text = update.SizeLabel.Length > 0 ? update.SizeLabel : "—";
     }
 }

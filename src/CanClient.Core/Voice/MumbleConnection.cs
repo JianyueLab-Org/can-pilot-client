@@ -78,6 +78,7 @@ public sealed class MumbleConnection : IDisposable
     private readonly CryptStateOcb2 _crypt = new();
     private readonly ConcurrentDictionary<uint, MumbleChannel> _channels = new();
     private readonly ConcurrentDictionary<uint, MumbleUser> _users = new();
+    private readonly ConcurrentDictionary<uint, byte> _listeningChannels = new();
     private readonly ConcurrentDictionary<ulong, long> _pendingUdpPings = new();
     private readonly CancellationTokenSource _cts = new();
 
@@ -118,7 +119,7 @@ public sealed class MumbleConnection : IDisposable
     /// <summary>有人被移出服务器：(会话号, 是否被踢/被封, 理由)。</summary>
     public event Action<uint, bool, string>? UserRemoved;
     /// <summary>收到语音：(发送者会话号, 帧号, Opus 数据, 是否结束)。</summary>
-    public event Action<uint, ulong, byte[], bool>? AudioReceived;
+    public event Action<uint, ulong, byte[], bool, uint>? AudioReceived;
     public event Action<bool>? UdpStateChanged;
 
     public IReadOnlyCollection<MumbleChannel> Channels => _channels.Values.ToList();
@@ -129,6 +130,8 @@ public sealed class MumbleConnection : IDisposable
     public MumbleUser? Myself => MySession is { } session && _users.TryGetValue(session, out var user) ? user : null;
 
     public MumbleUser? User(uint session) => _users.GetValueOrDefault(session);
+
+    public IReadOnlyCollection<uint> ListeningChannels => _listeningChannels.Keys.ToArray();
 
     private static long Now() => Stopwatch.GetTimestamp();
     private static double Since(long ticks) => ticks == 0 ? double.MaxValue : Stopwatch.GetElapsedTime(ticks).TotalSeconds;
@@ -348,6 +351,7 @@ public sealed class MumbleConnection : IDisposable
             {
                 var remove = MumbleProto.ChannelRemove.Parser.ParseFrom(body);
                 _channels.TryRemove(remove.ChannelId, out _);
+                _listeningChannels.TryRemove(remove.ChannelId, out _);
                 break;
             }
             case MessageType.UserState:
@@ -355,6 +359,13 @@ public sealed class MumbleConnection : IDisposable
                 var state = MumbleProto.UserState.Parser.ParseFrom(body);
                 if (!state.HasSession)
                     break;
+                if (state.Session == MySession)
+                {
+                    foreach (var id in state.ListeningChannelAdd)
+                        _listeningChannels[id] = 0;
+                    foreach (var id in state.ListeningChannelRemove)
+                        _listeningChannels.TryRemove(id, out _);
+                }
                 _users.AddOrUpdate(state.Session,
                     _ => new MumbleUser(state.Session, state.HasName ? state.Name : "",
                         state.HasChannelId ? state.ChannelId : 0),
@@ -616,7 +627,7 @@ public sealed class MumbleConnection : IDisposable
         }
         if (audio.SenderSession == 0 || audio.OpusData.IsEmpty)
             return;
-        AudioReceived?.Invoke(audio.SenderSession, audio.FrameNumber, audio.OpusData.ToByteArray(), audio.IsTerminator);
+        AudioReceived?.Invoke(audio.SenderSession, audio.FrameNumber, audio.OpusData.ToByteArray(), audio.IsTerminator, audio.Context);
     }
 
     /// <summary>发一帧语音。UDP 可用走 UDP，否则走 TCP 隧道。</summary>
@@ -664,6 +675,22 @@ public sealed class MumbleConnection : IDisposable
             return;
         Log.Info($"-> sending UserState (move) session={session} channel={channelId}");
         Send(MessageType.UserState, new MumbleProto.UserState { Session = session, ChannelId = channelId });
+    }
+
+    /// <summary>频道监听只接收，发话在实际加入的 TX 电台频道。状态以服务器 UserState 回报为准。</summary>
+    public void SetListeningChannels(IEnumerable<uint> wanted)
+    {
+        if (MySession is not { } session)
+            return;
+        var desired = wanted.ToHashSet();
+        var current = ListeningChannels;
+        var state = new MumbleProto.UserState { Session = session };
+        state.ListeningChannelAdd.AddRange(desired.Except(current));
+        state.ListeningChannelRemove.AddRange(current.Except(desired));
+        if (state.ListeningChannelAdd.Count == 0 && state.ListeningChannelRemove.Count == 0)
+            return;
+        Log.Info($"-> listeners add=[{string.Join(",", state.ListeningChannelAdd)}] remove=[{string.Join(",", state.ListeningChannelRemove)}]");
+        Send(MessageType.UserState, state);
     }
 
     public void Close()

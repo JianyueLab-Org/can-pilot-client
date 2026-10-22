@@ -8,6 +8,7 @@ TestResults/
 # 运行时生成
 msfs_settings.json
 msfs-for-can.log*
+logs/
 ModelScanResult-*.xml
 
 # RNNoise 由 native/rnnoise/build.ps1 本地构建，不进仓库

@@ -46,8 +46,15 @@ public sealed class SimConnection : IDisposable
         ("hdg", "PLANE HEADING DEGREES TRUE", "degrees"),
         ("squawk", "TRANSPONDER CODE:1", "Bco16"),
         ("xpdr", "TRANSPONDER STATE:1", "enum"),
+        ("ident", "TRANSPONDER IDENT:1", "bool"),
         ("com1", "COM ACTIVE FREQUENCY:1", "MHz"),
         ("com2", "COM ACTIVE FREQUENCY:2", "MHz"),
+        ("com1power", "COM STATUS:1", "enum"),
+        ("com1rx", "COM RECEIVE:1", "bool"),
+        ("com1tx", "COM TRANSMIT:1", "bool"),
+        ("com2tx", "COM TRANSMIT:2", "bool"),
+        ("com2power", "COM STATUS:2", "enum"),
+        ("com2rx", "COM RECEIVE:2", "bool"),
         ("ground", "SIM ON GROUND", "bool"),
         ("engine", "GENERAL ENG COMBUSTION:1", "bool"),
         ("gear", "GEAR HANDLE POSITION", "bool"),
@@ -506,8 +513,14 @@ public sealed class SimConnection : IDisposable
             Squawk = BcdToSquawk(Maybe("squawk")),
             TransponderMode = TransponderModeFor(Maybe("xpdr"), onGround, groundspeed),
             TransponderStateKnown = raw.ContainsKey("xpdr"),
+            TransponderIdent = Get("ident") != 0,
             Com1 = Frequency(Maybe("com1")),
             Com2 = Frequency(Maybe("com2")),
+            Com1Power = Get("com1power") == 0,
+            Com1Receiving = Get("com1rx", 1) != 0,
+            Com2Power = Get("com2power") == 0,
+            Com2Receiving = Get("com2rx", 1) != 0,
+            TransmitRadio = SelectTransmitRadio(Get("com1tx", 1) != 0, Get("com2tx") != 0),
             OnGround = onGround,
             VelocityEast = Get("vx"),
             VelocityUp = Get("vy"),
@@ -527,6 +540,9 @@ public sealed class SimConnection : IDisposable
     }
 
     private static int RoundInt(double value) => (int)Math.Round(value, MidpointRounding.ToEven);
+
+    /// <summary>TX 始终互斥。机模短暂同时回报两个 TX 时优先 COM1；都关闭就禁止发送。</summary>
+    public static int SelectTransmitRadio(bool com1, bool com2) => com1 ? 1 : com2 ? 2 : 0;
 
     /// <summary>COM ACTIVE FREQUENCY 已经是 MHz，只要挡掉 0 和异常值。</summary>
     public static double? Frequency(double? raw)

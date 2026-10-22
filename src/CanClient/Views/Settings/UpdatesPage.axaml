@@ -5,7 +5,8 @@
              x:DataType="vm:SettingsViewModel">
   <!-- vPilot SettingsPanelUpdates -->
   <StackPanel Spacing="6">
-    <CheckBox Content="启动时检查软件更新" IsChecked="{Binding CheckForUpdates}" />
+    <CheckBox Content="启动时检查新版本并提醒" IsChecked="{Binding CheckForUpdates}" />
+    <TextBlock Classes="caption" Text="客户端仅提供新版本提醒，更新由独立更新器负责。" TextWrapping="Wrap" />
     <TextBlock Classes="caption" Text="{Binding VersionText}" />
   </StackPanel>
 </UserControl>

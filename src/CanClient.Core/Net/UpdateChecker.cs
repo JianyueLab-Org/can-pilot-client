@@ -3,10 +3,7 @@ using CanClient.Core.Util;
 
 namespace CanClient.Core.Net;
 
-public sealed record UpdateInfo(string Version, string Notes, string Download, long Size)
-{
-    public string SizeLabel => Size <= 0 ? "" : $"{Size / (1024.0 * 1024.0):F1} MB";
-}
+public sealed record UpdateInfo(string Version);
 
 /// <summary>
 /// 查有没有新版，对应 Python 版 update.py。查到了也只是告诉用户，绝不自动更新；
@@ -21,10 +18,6 @@ public static class UpdateChecker
     public const string DefaultUrl = "https://ceruleanavi.net/api/v1/clients/latest";
 
     private static readonly Logger Log = Util.Log.For("update");
-
-    public static bool IsSafeUrl(string? value) =>
-        Uri.TryCreate((value ?? "").Trim(), UriKind.Absolute, out var uri)
-        && uri.Scheme == Uri.UriSchemeHttps && string.IsNullOrEmpty(uri.UserInfo);
 
     public static List<int> Parts(string? version)
     {
@@ -89,11 +82,8 @@ public static class UpdateChecker
             Log.Info($"update check: the server offered '{version}' against '{current}', ignoring");
             return null;
         }
-        long size = 0;
-        if (build.ValueKind == JsonValueKind.Object && build.TryGetProperty("size", out var s) && s.ValueKind == JsonValueKind.Number)
-            s.TryGetInt64(out size);
-        var info = new UpdateInfo(version, Str(data, "notes"), Str(build, "download"), size);
-        Log.Info($"update available: {info.Version} ({info.SizeLabel})");
+        var info = new UpdateInfo(version);
+        Log.Info($"update available: {info.Version}");
         return info;
     }
 

@@ -103,6 +103,16 @@ public sealed class FsdClient : IDisposable
 
     private OwnAircraftState? _position;
     private DateTime _identUntil = DateTime.MinValue;
+    private int _identChanged;
+
+    public bool IsIdentifying
+    {
+        get
+        {
+            lock (_lock)
+                return _position?.TransponderIdent == true || DateTime.UtcNow < _identUntil;
+        }
+    }
     private JsonObject? _configSent;
     private readonly Dictionary<string, ControllerInfo> _controllers = new(StringComparer.Ordinal);
     private TaskCompletionSource<string?>? _metarWaiter;
@@ -186,13 +196,22 @@ public sealed class FsdClient : IDisposable
     public void UpdatePosition(OwnAircraftState? state)
     {
         lock (_lock)
+        {
+            if ((_position?.TransponderIdent ?? false) != (state?.TransponderIdent ?? false))
+            {
+                Log.Info($"aircraft IDENT {(state?.TransponderIdent == true ? "on" : "off")}");
+                Interlocked.Exchange(ref _identChanged, 1);
+            }
             _position = state;
+        }
     }
 
     /// <summary>按下 IDENT，位置包的模式字符临时变成 Y。</summary>
     public void Ident(double seconds = 8.0)
     {
-        _identUntil = DateTime.UtcNow.AddSeconds(seconds);
+        lock (_lock)
+            _identUntil = DateTime.UtcNow.AddSeconds(seconds);
+        Interlocked.Exchange(ref _identChanged, 1);
         Log.Info("IDENT");
     }
 
@@ -503,7 +522,7 @@ public sealed class FsdClient : IDisposable
                 return;
 
             now = Seconds();
-            if (now >= nextPosition)
+            if (Interlocked.Exchange(ref _identChanged, 0) != 0 || now >= nextPosition)
                 nextPosition = now + SendPosition();
             if (SendFast && now >= nextFast)
             {
@@ -532,16 +551,20 @@ public sealed class FsdClient : IDisposable
         if (snapshot is null)
             return PositionInterval;
 
-        var mode = snapshot.TransponderMode == TransponderMode.ModeC ? 'N' : 'S';
-        if (DateTime.UtcNow < _identUntil)
-            mode = 'Y';
+        DateTime identUntil;
+        lock (_lock)
+            identUntil = _identUntil;
+        var mode = PositionMode(snapshot, DateTime.UtcNow < identUntil);
         Send(FsdProtocol.PositionPacket(mode, Callsign, _rating, snapshot));
 
         // 停在地面上没动就降频，省得刷屏
-        if (snapshot.OnGround && snapshot.Groundspeed < 1)
+        if (mode != 'Y' && snapshot.OnGround && snapshot.Groundspeed < 1)
             return SlowPositionInterval;
         return PositionInterval;
     }
+
+    internal static char PositionMode(OwnAircraftState state, bool softwareIdent) =>
+        state.TransponderIdent || softwareIdent ? 'Y' : state.TransponderMode == TransponderMode.ModeC ? 'N' : 'S';
 
     /// <summary>slow=false 是 200 ms 那一拍：在动发 `^`，停着发 `#ST`。slow=true 是 5 秒那一拍：在动才发 `#SL`。</summary>
     private string? SendFastPosition(bool slow)
