@@ -1,7 +1,5 @@
-using System.Collections.Concurrent;
 using CanClient.Core.Util;
 using NAudio.Wave;
-using NAudio.Wave.SampleProviders;
 
 namespace CanClient.Core.Voice;
 
@@ -9,8 +7,8 @@ namespace CanClient.Core.Voice;
 /// 麦克风和扬声器。48 kHz 单声道 16 位，20 ms 一帧（960 个采样），和 Mumble 的 Opus 帧对齐。
 ///
 /// 采集：WaveIn 的回调凑够 960 个采样就交出一帧（<see cref="FrameCaptured"/>），语音发送和设置页的
-/// 电平表都从这里拿。播放：每个说话的人一个缓冲，混到一起再走输出设备；提示音也混在同一路里，
-/// 所以响在客户端选的那块输出设备上，而不是系统默认设备。
+/// 电平表都从这里拿。播放：每个说话的人一条队列，由输出设备按它要的采样数拉着混（<see cref="RxMixer"/>）；
+/// 提示音也混在同一路里，所以响在客户端选的那块输出设备上，而不是系统默认设备。
 ///
 /// 设备的开、关、换都在锁里做——采集回调和播放线程都在别的线程上。
 /// </summary>
@@ -25,9 +23,7 @@ public sealed class AudioEngine : IDisposable
     private readonly object _lock = new();
     private WaveInEvent? _input;
     private WaveOutEvent? _output;
-    private MixingSampleProvider? _mixer;
-    private VolumeSampleProvider? _volume;
-    private readonly ConcurrentDictionary<uint, BufferedWaveProvider> _talkers = new();
+    private readonly RxMixer _mixer = new();
     private readonly short[] _pending = new short[FrameSamples];
     private int _pendingCount;
     private int _captureUsers;
@@ -50,8 +46,7 @@ public sealed class AudioEngine : IDisposable
         set
         {
             _outputGainDb = value;
-            if (_volume is not null)
-                _volume.Volume = (float)MicGain.DbToLinear(value);
+            _mixer.Gain = (float)MicGain.DbToLinear(value);
         }
     }
 
@@ -199,12 +194,11 @@ public sealed class AudioEngine : IDisposable
         CloseOutput();
         _outputName = deviceName;
         var index = AudioDevices.ResolveOutput(deviceName);
-        var mixer = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, 1)) { ReadFully = true };
-        var volume = new VolumeSampleProvider(mixer) { Volume = (float)MicGain.DbToLinear(_outputGainDb) };
+        _mixer.Clear();
         var output = new WaveOutEvent { DeviceNumber = index, DesiredLatency = 120, NumberOfBuffers = 3 };
         try
         {
-            output.Init(volume);
+            output.Init(_mixer);
             output.Play();
         }
         catch (Exception e)
@@ -212,10 +206,7 @@ public sealed class AudioEngine : IDisposable
             output.Dispose();
             throw new InvalidOperationException($"打不开扬声器：{e.Message}", e);
         }
-        _mixer = mixer;
-        _volume = volume;
         _output = output;
-        _talkers.Clear();
         Log.Info($"speaker open: {(index < 0 ? "[系统默认]" : deviceName)}");
     }
 
@@ -223,9 +214,7 @@ public sealed class AudioEngine : IDisposable
     {
         var output = _output;
         _output = null;
-        _mixer = null;
-        _volume = null;
-        _talkers.Clear();
+        _mixer.Clear();
         if (output is null)
             return;
         try
@@ -239,52 +228,22 @@ public sealed class AudioEngine : IDisposable
         output.Dispose();
     }
 
-    /// <summary>
-    /// 播一段某个人的语音。每个人一个缓冲；刚开口的那一帧前面垫 40 ms 静音，吸收网络抖动。
-    /// </summary>
+    /// <summary>播一段某个人的语音。包多长都行，按采样数接在这个人的队列后面。</summary>
     public void Play(uint talker, ReadOnlySpan<short> pcm)
     {
-        var mixer = _mixer;
-        if (mixer is null)
+        if (_output is null)
             return;
-        var buffer = _talkers.GetOrAdd(talker, _ =>
-        {
-            var b = new BufferedWaveProvider(PcmFormat)
-            {
-                BufferDuration = TimeSpan.FromSeconds(2),
-                DiscardOnBufferOverflow = true,
-                ReadFully = true
-            };
-            mixer.AddMixerInput(b.ToSampleProvider());
-            return b;
-        });
-        // 积压超过 120 ms 就丢掉旧的：网络一抖动攒下的包要是照单全收，这个人之后说的每句话都晚半拍
-        // （Python 版每个发话者的队列只留 3 帧，同一个道理）
-        if (buffer.BufferedDuration > TimeSpan.FromMilliseconds(120))
-            buffer.ClearBuffer();
-        if (buffer.BufferedBytes == 0)
-        {
-            var silence = new byte[SampleRate / 1000 * 40 * 2];
-            buffer.AddSamples(silence, 0, silence.Length);
-        }
-        var bytes = new byte[pcm.Length * 2];
-        for (var i = 0; i < pcm.Length; i++)
-        {
-            bytes[2 * i] = (byte)pcm[i];
-            bytes[2 * i + 1] = (byte)(pcm[i] >> 8);
-        }
-        buffer.AddSamples(bytes, 0, bytes.Length);
+        _mixer.Enqueue(talker, pcm);
     }
 
     /// <summary>播一段一次性的声音（提示音）。输出没开的话临时开一个。</summary>
     public void PlayClip(short[] pcm)
     {
-        var mixer = _mixer;
-        if (mixer is null)
+        if (_output is null)
         {
             lock (_lock)
             {
-                if (_mixer is null)
+                if (_output is null)
                 {
                     try
                     {
@@ -296,27 +255,9 @@ public sealed class AudioEngine : IDisposable
                         return;
                     }
                 }
-                mixer = _mixer!;
             }
         }
-        var samples = pcm.Select(s => s / 32768f).ToArray();
-        mixer.AddMixerInput(new ClipProvider(samples, mixer.WaveFormat));
-    }
-
-    private sealed class ClipProvider(float[] samples, WaveFormat format) : ISampleProvider
-    {
-        private int _position;
-        public WaveFormat WaveFormat { get; } = format;
-
-        public int Read(float[] buffer, int offset, int count)
-        {
-            var n = Math.Min(count, samples.Length - _position);
-            if (n <= 0)
-                return 0;
-            Array.Copy(samples, _position, buffer, offset, n);
-            _position += n;
-            return n;
-        }
+        _mixer.AddClip(pcm);
     }
 
     public void Dispose()
