@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CanClient.ViewModels"
+             x:Class="CanClient.Views.Settings.InformationPage"
+             x:DataType="vm:SettingsViewModel">
+  <StackPanel Spacing="10">
+    <TextBlock Classes="section" Text="连接信息" />
+    <TextBlock Classes="caption" Text="实时刷新 FSD 和语音连接状态，语音延迟为平均往返时间（RTT）。" TextWrapping="Wrap" />
+    <TextBlock x:Name="FsdConnectionStatus" Text="{Binding ConnectionInfo.FsdConnectionText}" />
+    <TextBlock Classes="caption" Text="{Binding ConnectionInfo.FsdConnectionDetail}" TextWrapping="Wrap" />
+    <TextBlock x:Name="VoiceConnectionStatus" Text="{Binding ConnectionInfo.VoiceConnectionText}" />
+    <TextBlock Classes="caption" Text="{Binding ConnectionInfo.VoiceConnectionDetail}" TextWrapping="Wrap" />
+    <TextBlock Classes="caption" Text="{Binding VersionText}" />
+  </StackPanel>
+</UserControl>

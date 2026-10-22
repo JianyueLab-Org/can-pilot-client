@@ -39,8 +39,11 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     private bool _scanDirty;
     private bool _rulesDirty;
 
-    public SettingsViewModel(ClientController controller)
+    public MainWindowViewModel? ConnectionInfo { get; }
+
+    public SettingsViewModel(ClientController controller, MainWindowViewModel? connectionInfo = null)
     {
+        ConnectionInfo = connectionInfo;
         _controller = controller;
         _settings = controller.Settings;
         CustomRuleSets.CollectionChanged += (_, _) =>

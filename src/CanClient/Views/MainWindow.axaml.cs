@@ -123,7 +123,7 @@ public partial class MainWindow : Window
     {
         // 模态设置窗口打开期间，主窗口蒙上遮罩，明确区分当前操作的窗口
         DialogLayer.IsVisible = true;
-        using var settings = new SettingsViewModel(Vm.Controller);
+        using var settings = new SettingsViewModel(Vm.Controller, Vm);
         try
         {
             await new SettingsWindow { DataContext = settings }.ShowDialog(this);

@@ -48,6 +48,7 @@
           <ListBoxItem Content="性能" Tag="Performance" />
           <ListBoxItem Content="更新" Tag="Updates" />
           <ListBoxItem Content="杂项" Tag="Misc" />
+          <ListBoxItem Content="信息" Tag="Information" />
         </ListBox>
       </Border>
 

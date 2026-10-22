@@ -620,7 +620,7 @@ public sealed class FsdClient : IDisposable
                 var newline = _buffer.IndexOf((byte)'\n');
                 if (newline >= 0)
                 {
-                    var line = Encoding.UTF8.GetString(_buffer.GetRange(0, newline).ToArray()).TrimEnd('\r').Trim();
+                    var line = FsdProtocol.DecodePacket(_buffer.GetRange(0, newline).ToArray()).TrimEnd('\r').Trim();
                     _buffer.RemoveRange(0, newline + 1);
                     if (line.Length > 0)
                         return line;

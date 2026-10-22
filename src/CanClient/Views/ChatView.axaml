@@ -7,9 +7,10 @@
   <!-- 对应 vPilot TabPageMessages：上方消息记录（RtfMessages），下方命令行（TxtCommandLine） -->
   <Grid RowDefinitions="*,Auto">
     <ScrollViewer x:Name="MessageScroller"
-                  Padding="12,8"
+                  ClipToBounds="True"
+                  VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
-      <ItemsControl ItemsSource="{Binding Messages}">
+      <ItemsControl x:Name="MessageItems" Margin="12,8,12,16" ItemsSource="{Binding Messages}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:ChatMessage">
             <SelectableTextBlock Classes="mono"
@@ -25,8 +26,8 @@
       </ItemsControl>
     </ScrollViewer>
 
-    <Border Grid.Row="1" Classes="footer" Padding="8">
-      <TextBox Classes="mono"
+    <Border x:Name="InputFooter" Grid.Row="1" Classes="footer" Padding="8">
+      <TextBox x:Name="MessageInput" Classes="mono"
                TextWrapping="Wrap"
                MaxHeight="96"
                Text="{Binding Input}"

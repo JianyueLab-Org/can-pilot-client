@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using CanClient.Core.Sim;
 
 namespace CanClient.Core.Fsd;
@@ -16,6 +17,22 @@ namespace CanClient.Core.Fsd;
 /// </summary>
 public static class FsdProtocol
 {
+    private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, true);
+    private static readonly Encoding LegacyChinese = CreateLegacyEncoding();
+
+    private static Encoding CreateLegacyEncoding()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return Encoding.GetEncoding(54936);
+    }
+
+    /// <summary>现代客户端优先 UTF-8；兼容旧管制端的 GB18030 / GBK，完整分帧后再解码。</summary>
+    internal static string DecodePacket(byte[] bytes)
+    {
+        try { return StrictUtf8.GetString(bytes); }
+        catch (DecoderFallbackException) { return LegacyChinese.GetString(bytes); }
+    }
+
     public const int ProtocolRevision = 101;
     public const int RatingObserver = 1;
     public const string ClientId = "0001";

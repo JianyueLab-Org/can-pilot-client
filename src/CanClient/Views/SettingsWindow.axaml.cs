@@ -44,6 +44,7 @@ public partial class SettingsWindow : Window
         "Performance" => new PerformancePage(),
         "Updates" => new UpdatesPage(),
         "Misc" => new MiscPage(),
+        "Information" => new InformationPage(),
         _ => throw new ArgumentOutOfRangeException(nameof(tag), tag, null)
     };
 

@@ -24,7 +24,7 @@
     不使用系统标题栏：拖动工具栏空白处移动窗口。
   -->
   <Panel>
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="Auto,*">
 
       <!-- ===== 工具栏（兼作拖动区域） ===== -->
       <Border Classes="toolbar" PointerPressed="OnToolbarPointerPressed">
@@ -141,15 +141,6 @@
           </TabControl.ContentTemplate>
         </TabControl>
       </Grid>
-      <!-- 沿用 Python MSFS 的常驻链路状态与语音传输 RTT，每拍刷新。 -->
-      <Border Grid.Row="2" BorderBrush="{DynamicResource Brush.Border.Control}" BorderThickness="0,1,0,0" Padding="10,5">
-        <WrapPanel ItemSpacing="24" LineSpacing="4">
-          <TextBlock x:Name="FsdConnectionStatus" Classes="caption" Text="{Binding FsdConnectionText}"
-                     ToolTip.Tip="{Binding FsdConnectionDetail}" />
-          <TextBlock x:Name="VoiceConnectionStatus" Classes="caption mono" Text="{Binding VoiceConnectionText}"
-                     ToolTip.Tip="{Binding VoiceConnectionDetail}" />
-        </WrapPanel>
-      </Border>
     </Grid>
 
     <!-- ===== 对话框遮罩层 ===== -->

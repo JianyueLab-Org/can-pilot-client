@@ -12,6 +12,9 @@ public partial class ChatView : UserControl
     public ChatView()
     {
         InitializeComponent();
+        MessageItems.SizeChanged += (_, _) => ScrollToEnd();
+        MessageScroller.SizeChanged += (_, _) => ScrollToEnd();
+        AttachedToVisualTree += (_, _) => ScrollToEnd();
     }
 
     protected override void OnDataContextChanged(EventArgs e)

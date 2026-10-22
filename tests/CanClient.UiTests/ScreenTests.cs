@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using CanClient.Core;
 using CanClient.Core.Settings;
 using CanClient.Core.Util;
@@ -26,6 +27,28 @@ public static class TestApp
 /// </summary>
 public class ScreenTests(ITestOutputHelper output)
 {
+    [AvaloniaFact]
+    public void LastMessageStaysVisibleAboveGrowingInput()
+    {
+        var tab = new ChatTabViewModel("消息", false);
+        var view = new ChatView { DataContext = tab };
+        var window = new Window { Width = 520, Height = 300, Content = view };
+        window.Show();
+        for (var i = 0; i < 30; i++)
+            tab.Add(new ChatMessage(CanClient.Core.MessageKind.Radio, "ZSSS_TWR", $"第 {i} 行：上海塔台中文管制信息，测试长消息换行后的底部可见性。"));
+        tab.Input = string.Join('\n', Enumerable.Repeat("正在输入较长的中文消息", 4));
+        Save(window, "chat-last-line");
+        var scroller = view.FindControl<ScrollViewer>("MessageScroller")!;
+        var footer = view.FindControl<Border>("InputFooter")!;
+        Assert.True(scroller.Bounds.Bottom <= footer.Bounds.Top + 1);
+        Assert.InRange(scroller.Extent.Height - scroller.Viewport.Height - scroller.Offset.Y, -1, 1);
+        var last = view.GetVisualDescendants().OfType<SelectableTextBlock>().Last();
+        var bottom = last.TranslatePoint(new Point(0, last.Bounds.Height), view);
+        Assert.NotNull(bottom);
+        Assert.True(bottom!.Value.Y <= footer.Bounds.Top);
+        window.Close();
+    }
+
     private static readonly string ScreenDirectory = Path.Combine(AppContext.BaseDirectory, "screens");
 
     private static ClientController CreateController()
@@ -84,29 +107,32 @@ public class ScreenTests(ITestOutputHelper output)
         main.Show();
         vm.AddSystem(".match CES5101 A320 → " + controller.Models.Match("CES5101", "A320").ModelName);
         Save(main, "01-main");
-        Assert.Equal("FSD：未连接", main.FindControl<TextBlock>("FsdConnectionStatus")!.Text);
-        Assert.Equal("语音：未连接", main.FindControl<TextBlock>("VoiceConnectionStatus")!.Text);
-        vm.FsdConnectionText = "FSD：已连接";
-        vm.VoiceConnectionText = "语音：已连接 · UDP 23 ms";
-        Save(main, "01-main-connected");
-        Assert.Equal(vm.VoiceConnectionText, main.FindControl<TextBlock>("VoiceConnectionStatus")!.Text);
-        vm.VoiceConnectionText = "语音：已连接 · TCP 41 ms";
-        Dispatcher.UIThread.RunJobs();
-        Assert.Equal(vm.VoiceConnectionText, main.FindControl<TextBlock>("VoiceConnectionStatus")!.Text);
-        vm.FsdConnectionText = "FSD：未连接";
-        vm.VoiceConnectionText = "语音：未连接";
+        Assert.Null(main.FindControl<TextBlock>("FsdConnectionStatus"));
+        Assert.Null(main.FindControl<TextBlock>("VoiceConnectionStatus"));
 
-        var settings = new SettingsViewModel(controller);
+        var settings = new SettingsViewModel(controller, vm);
         var window = new SettingsWindow { DataContext = settings };
         window.Show();
         var menu = window.FindControl<ListBox>("Menu")!;
-        string[] names = ["network", "notifications", "fonts", "audio", "ptt", "matching", "advanced", "rules", "performance", "updates", "misc"];
+        string[] names = ["network", "notifications", "fonts", "audio", "ptt", "matching", "advanced", "rules", "performance", "updates", "misc", "information"];
         for (var i = 0; i < names.Length; i++)
         {
             menu.SelectedIndex = i;
             if (names[i] == "matching")
                 settings.TestMatchCommand.Execute(null);
             Save(window, $"02-settings-{i:D2}-{names[i]}");
+            if (names[i] == "information")
+            {
+                var page = (Control)window.FindControl<ContentControl>("PanelHost")!.Content!;
+                Assert.Equal("FSD：未连接", page.FindControl<TextBlock>("FsdConnectionStatus")!.Text);
+                vm.FsdConnectionText = "FSD：已连接";
+                vm.VoiceConnectionText = "语音：已连接 · UDP 23 ms";
+                Save(window, "02-information-connected");
+                Assert.Equal(vm.VoiceConnectionText, page.FindControl<TextBlock>("VoiceConnectionStatus")!.Text);
+                vm.VoiceConnectionText = "语音：已连接 · TCP 41 ms";
+                Dispatcher.UIThread.RunJobs();
+                Assert.Equal(vm.VoiceConnectionText, page.FindControl<TextBlock>("VoiceConnectionStatus")!.Text);
+            }
         }
         settings.SetMeter(false);
         window.Close();
