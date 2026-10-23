@@ -716,7 +716,14 @@ public sealed class ClientController : IDisposable
         VoiceOptions.Denoise = Settings.MicDenoise;
         VoiceOptions.MicGainDb = Settings.MicGainDb;
         Audio.OutputGainDb = Settings.OutputGainDb;
-        Audio.ChangeInput(Settings.InputDevice);
+        try
+        {
+            Audio.ChangeInput(Settings.InputDevice);
+        }
+        catch (Exception e)
+        {
+            Post(MessageKind.Error, e.Message);
+        }
         try
         {
             Audio.ChangeOutput(Settings.OutputDevice);

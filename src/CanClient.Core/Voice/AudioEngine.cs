@@ -60,7 +60,16 @@ public sealed class AudioEngine : IDisposable
             _captureUsers++;
             if (_input is not null && deviceName == _inputName)
                 return;
-            OpenInput(deviceName);
+            try
+            {
+                OpenInput(deviceName);
+            }
+            catch
+            {
+                // 没开成就不算用户，否则之后 ChangeInput 会以为还有人在用、再去开一次
+                _captureUsers--;
+                throw;
+            }
         }
     }
 
