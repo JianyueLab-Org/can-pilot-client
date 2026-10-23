@@ -159,63 +159,94 @@ public sealed class RangeAudioService : IDisposable
     private static readonly IReadOnlyDictionary<string, bool> Empty = new Dictionary<string, bool>();
 
     private readonly Func<(string Cid, double Lat, double Lon)?> _ownPosition;
-    private readonly HttpClient _http = Net.Http.Create(TimeSpan.FromSeconds(8));
-    private CancellationTokenSource? _cts;
-    private List<RangeStation> _stations = [];
-    private DateTime _fetchedAt = DateTime.MinValue;
-    private bool _failing;
+    private readonly HttpClient _http;
+    private readonly object _lifecycleLock = new();
+    private RunState? _run;
+    private Task _loopCompletion = Task.CompletedTask;
+    private bool _disposed;
     private volatile IReadOnlyDictionary<string, bool> _policy = Empty;
+
+    // 每次启动独享缓存，旧请求即使晚于重启完成，也不能污染新一轮的数据。
+    private sealed class RunState
+    {
+        public CancellationTokenSource Cancellation { get; } = new();
+        public List<RangeStation> Stations { get; set; } = [];
+        public DateTime FetchedAt { get; set; } = DateTime.MinValue;
+        public bool Failing { get; set; }
+    }
 
     /// <param name="ownPosition">自己的 CID 和模拟器位置；没有模拟器位置时返回 (cid, NaN, NaN)，到 data.json 里按 CID 找；没有 CID 返回 null。</param>
     public RangeAudioService(Func<(string Cid, double Lat, double Lon)?> ownPosition)
+        : this(ownPosition, Net.Http.Create(TimeSpan.FromSeconds(8)))
+    {
+    }
+
+    internal RangeAudioService(Func<(string Cid, double Lat, double Lon)?> ownPosition, HttpClient http)
     {
         _ownPosition = ownPosition;
+        _http = http;
     }
 
     /// <summary>当前快照，只读、整体替换。</summary>
     public IReadOnlyDictionary<string, bool> Policy => _policy;
 
-    public bool Running => _cts is not null;
+    public bool Running { get { lock (_lifecycleLock) return _run is not null; } }
+
+    internal Task LoopCompletion { get { lock (_lifecycleLock) return _loopCompletion; } }
 
     public void Start()
     {
-        if (_cts is not null)
-            return;
-        var cts = new CancellationTokenSource();
-        _cts = cts;
-        _ = Task.Run(() => LoopAsync(cts.Token));
-        Log.Info("range audio started");
+        lock (_lifecycleLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_run is not null)
+                return;
+            var run = new RunState();
+            _run = run;
+            _loopCompletion = Task.Run(() => LoopAsync(run));
+            Log.Info("range audio started");
+        }
     }
 
     public void Stop()
     {
-        var cts = _cts;
-        _cts = null;
-        if (cts is null)
-            return;
-        cts.Cancel();
-        cts.Dispose();
-        _policy = Empty;
-        Log.Info("range audio stopped");
+        lock (_lifecycleLock)
+        {
+            var run = _run;
+            _run = null;
+            _policy = Empty;
+            if (run is null)
+                return;
+            run.Cancellation.Cancel();
+            Log.Info("range audio stopped");
+        }
     }
 
-    private async Task LoopAsync(CancellationToken cancellation)
+    private async Task LoopAsync(RunState run)
     {
-        while (!cancellation.IsCancellationRequested)
+        var cancellation = run.Cancellation.Token;
+        try
         {
-            await RefreshAsync(cancellation).ConfigureAwait(false);
-            try
+            while (!cancellation.IsCancellationRequested)
             {
+                await RefreshAsync(run, cancellation).ConfigureAwait(false);
                 await Task.Delay(PollInterval, cancellation).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            // Stop 只取消；等循环退出才释放 CTS，避免启动中的任务访问已释放的 Token。
+            lock (_lifecycleLock)
             {
-                return;
+                run.Cancellation.Dispose();
             }
         }
     }
 
-    private async Task RefreshAsync(CancellationToken cancellation)
+    private async Task RefreshAsync(RunState run, CancellationToken cancellation)
     {
         try
         {
@@ -223,11 +254,11 @@ public sealed class RangeAudioService : IDisposable
             response.EnsureSuccessStatusCode();
             await using var stream = await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellation).ConfigureAwait(false);
-            _stations = RangePolicy.Parse(document.RootElement);
-            _fetchedAt = DateTime.UtcNow;
-            if (_failing)
+            run.Stations = RangePolicy.Parse(document.RootElement);
+            run.FetchedAt = DateTime.UtcNow;
+            if (run.Failing)
                 Log.Info("data.json reachable again");
-            _failing = false;
+            run.Failing = false;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -235,20 +266,25 @@ public sealed class RangeAudioService : IDisposable
         }
         catch (Exception e)
         {
-            if (!_failing)
+            if (!run.Failing)
                 Log.Warning($"could not load {DataUrl}: {e.Message}");
-            _failing = true;
+            run.Failing = true;
         }
         if (cancellation.IsCancellationRequested)
             return;
-        Publish(DateTime.UtcNow - _fetchedAt > StaleAfter ? Empty : Build());
+        var policy = DateTime.UtcNow - run.FetchedAt > StaleAfter ? Empty : Build(run.Stations);
+        lock (_lifecycleLock)
+        {
+            // 与 Stop 的清空操作原子互斥，并拒绝已经被新一轮启动替换的发布者。
+            if (ReferenceEquals(_run, run))
+                Publish(policy);
+        }
     }
 
-    private Dictionary<string, bool> Build()
+    private Dictionary<string, bool> Build(List<RangeStation> stations)
     {
         if (_ownPosition() is not { } own)
             return [];
-        var stations = _stations;
         // 自己挂着管制席位（比如用观察员模式听频）就按管制员算，位置取席位坐标；
         // 否则是飞行员，优先用模拟器的实时位置，没有再到 data.json 里找自己
         var listener = stations.FirstOrDefault(s => s.IsController && s.Cid == own.Cid)
@@ -270,7 +306,13 @@ public sealed class RangeAudioService : IDisposable
 
     public void Dispose()
     {
-        Stop();
-        _http.Dispose();
+        lock (_lifecycleLock)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            Stop();
+            _http.Dispose();
+        }
     }
 }

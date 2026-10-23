@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using CanClient.Core.Voice;
 
@@ -114,5 +115,89 @@ public class RangeAudioTests
         Assert.Equal("5158", ctr.Cid);
         Assert.Equal(6, ctr.Facility);
         Assert.Equal(33.9425, ctr.Latitude, 4);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StoppedRefreshCannotPublishAfterStopOrRestart(bool restart)
+    {
+        using var enteredBuild = new ManualResetEventSlim();
+        using var resumeBuild = new ManualResetEventSlim();
+        var calls = 0;
+        using var http = new HttpClient(new RangeDataHandler());
+        using var service = new RangeAudioService(() =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                enteredBuild.Set();
+                if (!resumeBuild.Wait(TimeSpan.FromSeconds(10)))
+                    throw new TimeoutException("Old refresh was not released");
+                // 旧刷新会生成 deny，新刷新会生成 allow，便于检查是否被覆盖。
+                return ("1", Lat, Lon);
+            }
+            return ("1", 50, Lon);
+        }, http);
+
+        service.Start();
+        var oldLoop = service.LoopCompletion;
+        try
+        {
+            Assert.True(enteredBuild.Wait(TimeSpan.FromSeconds(10)), "Refresh did not enter Build");
+            service.Stop();
+            Assert.False(service.Running);
+            Assert.Empty(service.Policy);
+
+            IReadOnlyDictionary<string, bool>? restartedPolicy = null;
+            if (restart)
+            {
+                service.Start();
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                while (!service.Policy.ContainsKey("2"))
+                    await Task.Delay(10, timeout.Token);
+                restartedPolicy = service.Policy;
+                Assert.True(restartedPolicy["2"]);
+            }
+
+            resumeBuild.Set();
+            await oldLoop.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.Equal(restart, service.Running);
+            if (restart)
+                Assert.Same(restartedPolicy, service.Policy);
+            else
+                Assert.Empty(service.Policy);
+        }
+        finally
+        {
+            resumeBuild.Set();
+            service.Stop();
+            await oldLoop.WaitAsync(TimeSpan.FromSeconds(10));
+            await service.LoopCompletion.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    [Fact]
+    public async Task ImmediateStopDoesNotFaultStartingLoop()
+    {
+        using var http = new HttpClient(new RangeDataHandler());
+        using var service = new RangeAudioService(() => ("1", Lat, Lon), http);
+        for (var i = 0; i < 50; i++)
+        {
+            service.Start();
+            service.Stop();
+            await service.LoopCompletion.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(service.Running);
+            Assert.Empty(service.Policy);
+        }
+    }
+
+    private sealed class RangeDataHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"pilots":[{"cid":"2","callsign":"CCA2","latitude":50,"longitude":116.6}],"controllers":[]}""")
+            });
     }
 }
