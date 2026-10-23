@@ -99,6 +99,8 @@ public sealed class AppSettings
     /// <summary>Python 版的校准记录（设备名 → {gain_db, denoise, ...}）。第一次用某个设备时拿来当初值。</summary>
     [JsonPropertyName("mic_calibration")] public JsonObject MicCalibration { get; set; } = new();
     [JsonPropertyName("mic_denoise")] public bool MicDenoise { get; set; } = true;
+    /// <summary>距离音频范围：按 data.json 的坐标把超出范围的人静音。</summary>
+    [JsonPropertyName("range_audio")] public bool RangeAudio { get; set; } = true;
     /// <summary>Python 版的扬声器音量百分比，迁移到 output_gain_db 后不再写。</summary>
     [JsonPropertyName("speaker_volume")] public int? LegacySpeakerVolume { get; set; }
     [JsonPropertyName("message_sound")] public bool MessageSound { get; set; } = true;
