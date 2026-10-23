@@ -1,0 +1,267 @@
+# 推到默认分支就编译、自动进一位补丁号、发 Release。流程照搬 can-audio 的 release.yml。
+#
+# 版本号规则：**只有 v1.0.xxx 的 xxx 会自动动。** 主版本和次版本（1.0）是人的
+# 决定，写在 Directory.Build.props 的默认 Version 里；补丁号由这个工作流数已有的
+# v1.0.* 标签得出，取最大的那个加一。一个都没有就从 v1.0.0 开始。想发 1.1 就去改
+# Directory.Build.props 并把下面的 SERIES 一起改——两边对不上时 version job 会直接报错。
+#
+# 为什么不让 Directory.Build.props 自己维护补丁号：那需要每次发版都回推一个提交改
+# 文件，而那个提交又会触发这个工作流，自己咬自己。数标签没有这个问题——标签就是
+# 已发布版本的唯一事实来源。v0.0.x 那几个老标签不在本系列里，不参与计数。
+#
+# 只能在 Windows 上打：SimConnect、opus、RNNoise 都是 Windows x64 原生库。
+#
+# X-Plane 原生插件来自私有仓库 can-xplane-client 的固定发布包，匿名下载是 404。
+# 需要在本仓库 Settings → Secrets → Actions 里配 XPLANE_CLIENT_TOKEN：一个对
+# JianyueLab-Org/can-xplane-client 有 Contents 只读权限的 PAT。
+
+name: 编译与发布
+
+on:
+  push:
+    branches: [csharp-client, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write        # 打标签、建 Release 都要写权限
+
+# 两次推送挨得很近时会同时算出同一个补丁号，然后第二个打标签失败。
+# 串行化，后面那个会重新数一遍。
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  SERIES: "1.0"          # 自动递增只在这个系列里进行；要和 Directory.Build.props 的默认 Version 同系列
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      number: ${{ steps.next.outputs.number }}   # 1.0.7
+      tag: ${{ steps.next.outputs.tag }}         # v1.0.7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # 要看到全部标签
+      - name: 核对 SERIES 和 Directory.Build.props
+        shell: bash
+        run: |
+          set -euo pipefail
+          declared=$(sed -n "s/.*<Version Condition=\"'\$(CAN_VERSION)' == ''\">\([0-9]*\.[0-9]*\)\.[0-9]*<\/Version>.*/\1/p" Directory.Build.props)
+          if [ "$declared" != "$SERIES" ]; then
+            echo "::error::Directory.Build.props 的默认版本是 ${declared:-（读不出）}.x，工作流的 SERIES 是 ${SERIES}，两边要一起改"
+            exit 1
+          fi
+      - id: next
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          # 只看本系列的标签，取补丁号最大的那个。一个都没有就从 0 开始。
+          latest=$(git tag -l "v${SERIES}.*" \
+                   | sed -n "s/^v${SERIES}\.\([0-9][0-9]*\)$/\1/p" \
+                   | sort -n | tail -1)
+          next=$(( ${latest:--1} + 1 ))
+          echo "number=${SERIES}.${next}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${SERIES}.${next}"   >> "$GITHUB_OUTPUT"
+          echo "上一个补丁号 ${latest:-（无）}，这次发 v${SERIES}.${next}"
+
+  rnnoise:
+    # 麦克风降噪的原生库。从 xiph 的 v0.2 发布包构建（SHA-256 固定在脚本里），
+    # 不进仓库。
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: native/rnnoise/out
+          key: rnnoise-0.2-${{ hashFiles('native/rnnoise/CMakeLists.txt', 'native/rnnoise/build.ps1', 'native/rnnoise/compat/os_support.h') }}
+      - name: 构建 rnnoise.dll
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./native/rnnoise/build.ps1 -Out native/rnnoise/out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rnnoise-dll
+          path: native/rnnoise/out/
+          if-no-files-found: error
+
+  xplane-plugin:
+    # 固定版本的 X-Plane 原生插件，校验整个发布包的 SHA-256 后只取插件文件。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 打包 XPC_for_CAN-plugin.zip
+        shell: bash
+        env:
+          # package-xplane-plugin.py 匿名下载 404 时退回 gh release download，gh 读这个
+          GH_TOKEN: ${{ secrets.XPLANE_CLIENT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::没有配置 XPLANE_CLIENT_TOKEN。can-xplane-client 是私有仓库，需要一个对它有 Contents 只读权限的 PAT"
+            exit 1
+          fi
+          python tools/package-xplane-plugin.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xplane-plugin
+          path: native/XPC_for_CAN-plugin.zip
+          if-no-files-found: error
+
+  test:
+    # 和 build 并行。测试没过就不发——release 同时依赖两者。
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: 单元测试 + 界面渲染测试
+        shell: pwsh
+        run: |
+          dotnet test CanMfsClient.slnx -c Release
+          if ($LASTEXITCODE) { throw "测试没过" }
+
+  build:
+    needs: [version, rnnoise, xplane-plugin]
+    runs-on: windows-latest
+    env:
+      OUTPUT: can-pilot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: rnnoise-dll
+          path: native/rnnoise/out
+      - uses: actions/download-artifact@v4
+        with:
+          name: xplane-plugin
+          path: native
+      - name: 放 rnnoise.dll
+        shell: pwsh
+        # CanClient.Core.csproj 只在仓库根目录有这两个文件时才把它们带进输出
+        run: |
+          Copy-Item native/rnnoise/out/rnnoise.dll .
+          Copy-Item native/rnnoise/out/RNNOISE-COPYING .
+
+      - name: 发布 ${{ env.OUTPUT }}
+        shell: pwsh
+        env:
+          # Directory.Build.props 读它；标题栏、日志、更新检查报的都是它
+          CAN_VERSION: ${{ needs.version.outputs.number }}
+        # 参数和 build.ps1 一致：自包含单文件，原生库打进 EXE，不裁剪
+        run: |
+          dotnet publish src/CanClient/CanClient.csproj -c Release -r win-x64 --self-contained true -o "dist/$env:OUTPUT" `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+          if ($LASTEXITCODE) { throw "发布失败" }
+
+      - name: 验随包文件和版本号
+        shell: pwsh
+        # 模型库、插件包和许可证是放在 EXE 旁边的随包文件。漏了不会让发布失败，
+        # 只会让用户拿到一个装上就缺功能的包，所以在这里显式验一遍。
+        run: |
+          $root = "dist/$env:OUTPUT"
+          $missing = @()
+          foreach ($f in @("can-pilot.exe", "ModelMatchingData.bin", "XPC_for_CAN-plugin.zip",
+                           "XPLANE-NOTICES.md", "RNNOISE-COPYING")) {
+            if (-not (Test-Path "$root/$f")) { $missing += $f }
+          }
+          if ($missing.Count) { throw "包里缺这些文件: $($missing -join ', ')" }
+
+          $version = ((Get-Item "$root/can-pilot.exe").VersionInfo.ProductVersion -split '\+')[0]
+          if ($version -ne "${{ needs.version.outputs.number }}") {
+            throw "EXE 里的版本号是 $version，应当是 ${{ needs.version.outputs.number }}"
+          }
+          Write-Output "随包文件齐全，版本 $version"
+
+      - name: 压包
+        working-directory: dist
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "$env:OUTPUT" `
+            -DestinationPath "$env:OUTPUT-${{ needs.version.outputs.tag }}-win-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: can-pilot
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    # 只有推到默认分支才发。手动触发和别的分支只出产物挂在 Actions 里，方便试包而不占版本号。
+    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    needs: [version, test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: can-pilot
+          path: packages
+
+      - name: 生成发布包 SHA-256 清单
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > packages/SHA256SUMS
+          while IFS= read -r -d '' file; do
+            sha256sum "$file" \
+              | awk -v name="${file#packages/}" '{print $1 "  " name}' \
+              >> packages/SHA256SUMS
+          done < <(find packages -type f -name '*.zip' -print0 | sort -z)
+          test -s packages/SHA256SUMS
+
+      - name: 打标签
+        # 标签是"已发布版本"的唯一事实来源，下一次就靠它算补丁号
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ needs.version.outputs.tag }}" \
+                  -m "${{ needs.version.outputs.tag }}"
+          git push origin "${{ needs.version.outputs.tag }}"
+
+      - name: 建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: CAN Pilot Client ${{ needs.version.outputs.tag }}
+          files: |
+            packages/*.zip
+            packages/SHA256SUMS
+          generate_release_notes: true
+          body: |
+            ## 下载
+
+            `can-pilot-${{ needs.version.outputs.tag }}-win-x64.zip`：CAN 连飞网络的统一飞行员客户端，
+            支持 MSFS 2020 / 2024 与 X-Plane 11.50+ / 12，Windows x64。
+
+            解压到一个**可写**的目录，运行里面的 `can-pilot.exe`。无需安装 .NET 或 Python。
+            分发和升级时请保留整个文件夹：`ModelMatchingData.bin`（MSFS 模型库）、
+            `XPC_for_CAN-plugin.zip`（X-Plane 他机插件）和许可证文件都要和 EXE 放在一起。
+
+            ### X-Plane 的他机插件
+
+            一般不用管它——在客户端设置的 X-Plane 页里安装即可。自动安装不成的话，
+            把 `XPC_for_CAN-plugin.zip` 解压后的 `XPC_for_CAN` 文件夹手工拷到
+            `<X-Plane>/Resources/plugins/`，重启 X-Plane 生效。来源和许可证见 `XPLANE-NOTICES.md`。
+
+            ### 配置与日志
+
+            设置保存在程序目录的 `msfs_settings.json`，旧版配置可以直接沿用；
+            日志在 EXE 旁的 `logs/` 文件夹。校验文件完整性请对照 `SHA256SUMS`。
