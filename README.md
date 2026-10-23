@@ -23,14 +23,14 @@ pwsh -File build.ps1                        # 构建 RNNoise、准备 X-Plane �
 ```
 
 构建脚本采用 .NET 10 Windows x64 自包含单文件发布，无需安装 .NET；托管依赖和原生 DLL 打进 EXE，
-原生库在运行时自动解压到 .NET 缓存。分发整个 `dist/can-pilot/`（EXE、MSFS 模型库、X-Plane 插件压缩包、许可证及来源说明），入口为 `can-pilot.exe`。版本系列 `1.0` 写在 `Directory.Build.props`；
+原生库在运行时自动解压到 .NET 缓存。分发整个 `dist/can-pilot/`（EXE、MSFS 模型库、X-Plane 插件压缩包、许可证及来源说明），入口为 `can-pilot.exe`。版本系列 `3.0` 写在 `Directory.Build.props`；
 也可在构建前设置 `$env:CAN_VERSION` 覆盖，程序标题和版本检查与发布包保持一致。
 
 ### 自动发布
 
 `.github/workflows/release.yml` 在推到默认分支时跑测试、编译 RNNoise、打包 X-Plane 插件、
-发布 `can-pilot-v1.0.x-win-x64.zip`，再打标签并建 GitHub Release（附 `SHA256SUMS`）。
-补丁号由已有的 `v1.0.*` 标签加一得出，第一次是 `v1.0.0`；想换到 1.1 就把
+发布 `can-pilot-v3.0.x-win-x64.zip`，再打标签并建 GitHub Release（附 `SHA256SUMS`）。
+补丁号由已有的 `v3.0.*` 标签加一得出，第一次是 `v3.0.0`；想换到 3.1 就把
 `Directory.Build.props` 和工作流里的 `SERIES` 一起改。手动触发或推到其他分支只在
 Actions 里留产物，不发版、不占版本号。
 

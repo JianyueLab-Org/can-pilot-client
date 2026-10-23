@@ -1,8 +1,8 @@
 # 推到默认分支就编译、自动进一位补丁号、发 Release。流程照搬 can-audio 的 release.yml。
 #
-# 版本号规则：**只有 v1.0.xxx 的 xxx 会自动动。** 主版本和次版本（1.0）是人的
+# 版本号规则：**只有 v3.0.xxx 的 xxx 会自动动。** 主版本和次版本（3.0）是人的
 # 决定，写在 Directory.Build.props 的默认 Version 里；补丁号由这个工作流数已有的
-# v1.0.* 标签得出，取最大的那个加一。一个都没有就从 v1.0.0 开始。想发 1.1 就去改
+# v3.0.* 标签得出，取最大的那个加一。一个都没有就从 v3.0.0 开始。想发 3.1 就去改
 # Directory.Build.props 并把下面的 SERIES 一起改——两边对不上时 version job 会直接报错。
 #
 # 为什么不让 Directory.Build.props 自己维护补丁号：那需要每次发版都回推一个提交改
@@ -32,7 +32,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  SERIES: "1.0"          # 自动递增只在这个系列里进行；要和 Directory.Build.props 的默认 Version 同系列
+  SERIES: "3.0"          # 自动递增只在这个系列里进行；要和 Directory.Build.props 的默认 Version 同系列
   DOTNET_NOLOGO: '1'
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
 
@@ -40,8 +40,8 @@ jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
-      number: ${{ steps.next.outputs.number }}   # 1.0.7
-      tag: ${{ steps.next.outputs.tag }}         # v1.0.7
+      number: ${{ steps.next.outputs.number }}   # 3.0.7
+      tag: ${{ steps.next.outputs.tag }}         # v3.0.7
     steps:
       - uses: actions/checkout@v4
         with:
