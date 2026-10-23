@@ -92,6 +92,7 @@ public sealed class VoiceSession : IDisposable
     private short[]? _lastProcessed;
 
     // 接收
+    private volatile IReadOnlyDictionary<string, bool> _rangePolicy = new Dictionary<string, bool>();
     private long _lastRx;
     private volatile bool _receiving;
     private string _talker = "";
@@ -717,10 +718,18 @@ public sealed class VoiceSession : IDisposable
 
     // ---------- 接收 ----------
 
+    /// <summary>
+    /// 距离音频范围的完整快照（CID → 是否放行），整体替换。Mumble 用户名就是 CID；
+    /// 明确 false 的来源在解码前丢掉，不播放、不亮接收灯；不在快照里的默认放行。
+    /// </summary>
+    public void SetRangePolicy(IReadOnlyDictionary<string, bool> policy) => _rangePolicy = policy;
+
     private void OnAudio(uint session, ulong frameNumber, byte[] opus, bool terminator, uint context)
     {
         var connection = _connection;
         if (connection is null || session == connection.MySession)
+            return;
+        if (connection.User(session)?.Name is { } cid && _rangePolicy.TryGetValue(cid, out var allow) && !allow)
             return;
         bool com1, com2;
         var senderChannel = connection.User(session)?.ChannelId;

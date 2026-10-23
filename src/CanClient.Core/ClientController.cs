@@ -102,6 +102,7 @@ public sealed class ClientController : IDisposable
             InvalidateModels();
         };
         _injectionLoop = new InjectionLoop(InjectFrame);
+        RangeAudio = new RangeAudioService(OwnRangePosition);
         _timer = new Timer(_ => SafeTick(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
@@ -112,6 +113,7 @@ public sealed class ClientController : IDisposable
     public AudioEngine Audio { get; }
     public PttWatcher Ptt { get; } = new();
     public VoiceOptions VoiceOptions { get; }
+    public RangeAudioService RangeAudio { get; }
     public FsdClient? Fsd { get; private set; }
     public VoiceSession? Voice { get; private set; }
 
@@ -235,7 +237,10 @@ public sealed class ClientController : IDisposable
         voice.ReceivingChanged += value => { if (voice == Voice) ReceivingChanged?.Invoke(value); };
         voice.RadioReceivingChanged += (radio, value) => { if (voice == Voice) RadioReceivingChanged?.Invoke(radio, value); };
         voice.ChannelChanged += (frequency, name) => Post(MessageKind.System, $"语音已进入 {frequency:F3}（{name}）");
+        voice.SetRangePolicy(RangeAudio.Policy);
         Voice = voice;
+        if (Settings.RangeAudio)
+            RangeAudio.Start();
         Ptt.SetMonitoring(true);
         SyncVoiceRadios();
         ThreadPool.QueueUserWorkItem(_ => voice.Start());
@@ -253,6 +258,7 @@ public sealed class ClientController : IDisposable
         Voice = null;
         if (voice is not null)
             ThreadPool.QueueUserWorkItem(_ => voice.Stop());
+        RangeAudio.Stop();
         // 断开网络就没有他机来源了：先停注入循环，再把放进去的清掉，否则会冻在天上
         _injectionLoop.Stop();
         _plannedEntries = null;
@@ -311,6 +317,7 @@ public sealed class ClientController : IDisposable
         if (state is LinkState.Offline or LinkState.Error)
         {
             Voice = null;
+            RangeAudio.Stop();
             Ptt.SetMonitoring(false);
             TransmittingChanged?.Invoke(false);
             ReceivingChanged?.Invoke(false);
@@ -409,6 +416,15 @@ public sealed class ClientController : IDisposable
         Sim.SetTransponderState(value ? TransponderMode.ModeC : TransponderMode.Standby);
     }
 
+    /// <summary>距离音频范围用的自己：CID 和模拟器位置，没有模拟器位置时坐标给 NaN，到 data.json 里按 CID 找。</summary>
+    private (string Cid, double Lat, double Lon)? OwnRangePosition()
+    {
+        var cid = Settings.Cid.Trim();
+        if (cid.Length == 0)
+            return null;
+        return Own is { } own ? (cid, own.Latitude, own.Longitude) : (cid, double.NaN, double.NaN);
+    }
+
     private double? CurrentFrequency() =>
         Observer.FrequencyFor(Own?.Com1, Own?.Com1Power ?? true, Settings.ObserverFrequency, _observer);
 
@@ -432,6 +448,8 @@ public sealed class ClientController : IDisposable
         fsd?.PruneControllers(ControllerMaxAge);
         // 语音频率每一拍都跟一次，不挂在"读到了模拟器数据"下面：观察员多半没开模拟器
         SyncVoiceRadios();
+        // 范围快照也每拍交一次：只是换个引用，语音会话重建、重连都不会漏
+        Voice?.SetRangePolicy(RangeAudio.Policy);
 
         foreach (var callsign in Traffic.Prune())
         {
@@ -733,6 +751,11 @@ public sealed class ClientController : IDisposable
             Post(MessageKind.Error, e.Message);
         }
         Ptt.SetBindings(Settings.PttBindings ?? []);
+        if (!Settings.RangeAudio)
+            RangeAudio.Stop();
+        else if (Voice is not null)
+            RangeAudio.Start();
+        Voice?.SetRangePolicy(RangeAudio.Policy);
     }
 
     public void Dispose()
@@ -741,6 +764,7 @@ public sealed class ClientController : IDisposable
         if (_connectRequested)
             Disconnect();
         _injectionLoop.Stop();
+        RangeAudio.Dispose();
         _injector?.Dispose();
         _xplaneTraffic.Dispose();
         Ptt.Dispose();

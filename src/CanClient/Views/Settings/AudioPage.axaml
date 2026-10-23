@@ -14,6 +14,9 @@
       <CheckBox Content="麦克风降噪（RNNoise）" IsChecked="{Binding MicDenoise}" IsEnabled="{Binding DenoiseAvailable}" />
       <TextBlock Classes="caption" VerticalAlignment="Center" Text="{Binding DenoiseNote}" />
     </StackPanel>
+    <CheckBox Content="距离音频范围（同频远处的人自动静音）" IsChecked="{Binding RangeAudio}" Margin="0,4,0,0" />
+    <TextBlock Classes="caption" TextWrapping="Wrap"
+               Text="飞行员 200 nm；TWR 及以下 100 nm、APP 300 nm、CTR 600 nm、FSS 2000 nm；管制员之间不限距离。" />
 
     <Grid ColumnDefinitions="72,*,32" RowDefinitions="Auto,Auto" Margin="0,6,0,0">
       <TextBlock Classes="muted" Text="输出音量" VerticalAlignment="Center" />

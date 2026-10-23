@@ -127,6 +127,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         if (!OutputDevices.Contains(OutputDeviceName))
             OutputDevices = [.. OutputDevices, OutputDeviceName];
         MicDenoise = _settings.MicDenoise;
+        RangeAudio = _settings.RangeAudio;
         OutputVolumeDb = _settings.OutputGainDb;
         InputVolumeDb = _settings.MicGainDb;
 
@@ -242,6 +243,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         _settings.InputDevice = InputDeviceName == AudioDevices.SystemDefault ? "" : InputDeviceName ?? "";
         _settings.OutputDevice = OutputDeviceName == AudioDevices.SystemDefault ? "" : OutputDeviceName ?? "";
         _settings.MicDenoise = MicDenoise;
+        _settings.RangeAudio = RangeAudio;
         _settings.OutputGainDb = OutputVolumeDb;
         _settings.MicGainDb = InputVolumeDb;
         _settings.PttBindings = _bindings.ToList();
@@ -469,6 +471,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private string? _inputDeviceName;
     [ObservableProperty] private string? _outputDeviceName;
     [ObservableProperty] private bool _micDenoise;
+    [ObservableProperty] private bool _rangeAudio;
     public bool DenoiseAvailable { get; } = Denoiser.Available;
     public string DenoiseNote => DenoiseAvailable ? "" : "（没有找到 rnnoise.dll，降噪不可用）";
 
