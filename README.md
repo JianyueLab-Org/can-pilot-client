@@ -23,9 +23,8 @@ pwsh -File build.ps1                        # 构建 RNNoise、准备 X-Plane �
 ```
 
 构建脚本采用 .NET 10 Windows x64 自包含单文件发布，无需安装 .NET；托管依赖和原生 DLL 打进 EXE，
-原生库在运行时自动解压到 .NET 缓存。分发整个 `dist/can-pilot/`（EXE、MSFS 模型库、X-Plane 插件压缩包、许可证及来源说明），入口为 `can-pilot.exe`。正式版本号在构建前设置
-`$env:CAN_VERSION = "0.0.3"`；不设置时按开发版显示（报下一个补丁号并标注“开发版”）。
-C# 版本从 `0.0.1` 开始独立编号。GitHub 预发布也可使用相同的完整版本号，程序标题和版本检查与发布包保持一致。
+原生库在运行时自动解压到 .NET 缓存。分发整个 `dist/can-pilot/`（EXE、MSFS 模型库、X-Plane 插件压缩包、许可证及来源说明），入口为 `can-pilot.exe`。当前正式版本为 `1.0.0`，
+写在 `Directory.Build.props`；也可在构建前设置 `$env:CAN_VERSION` 覆盖，程序标题和版本检查与发布包保持一致。
 
 设置保存在程序目录的 `msfs_settings.json`（与旧 Python 版格式兼容，老配置可直接读入），
 日志始终保存在 EXE 所在文件夹下的 `logs/yyyy-MM-dd.log`，例如 `logs/2026-10-23.log`，与启动时的工作目录无关。请把软件解压到可写目录；配置目录不可写时使用 `%LOCALAPPDATA%\CAN Pilot Client`。
