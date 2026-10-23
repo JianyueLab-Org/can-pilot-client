@@ -28,14 +28,13 @@ pwsh -File build.ps1                        # 构建 RNNoise、准备 X-Plane �
 
 ### 自动发布
 
-`.github/workflows/release.yml` 在推到默认分支时跑测试、编译 RNNoise、打包 X-Plane 插件、
+`.github/workflows/release.yml` 在推到默认分支时跑测试、编译 RNNoise、
 发布 `can-pilot-v3.0.x-win-x64.zip`，再打标签并建 GitHub Release（附 `SHA256SUMS`）。
 补丁号由已有的 `v3.0.*` 标签加一得出，第一次是 `v3.0.0`；想换到 3.1 就把
 `Directory.Build.props` 和工作流里的 `SERIES` 一起改。手动触发或推到其他分支只在
 Actions 里留产物，不发版、不占版本号。
 
-X-Plane 插件来自私有仓库 can-xplane-client，需要在仓库的 Actions secrets 里配置
-`XPLANE_CLIENT_TOKEN`（对 can-xplane-client 有 Contents 只读权限的 PAT），否则发布会在插件那一步失败。
+X-Plane 插件包 `native/XPC_for_CAN-plugin.zip` 已提交在仓库里，CI 直接使用，不需要任何 secret。
 
 设置保存在程序目录的 `msfs_settings.json`（与旧 Python 版格式兼容，老配置可直接读入），
 日志始终保存在 EXE 所在文件夹下的 `logs/yyyy-MM-dd.log`，例如 `logs/2026-10-23.log`，与启动时的工作目录无关。请把软件解压到可写目录；配置目录不可写时使用 `%LOCALAPPDATA%\CAN Pilot Client`。
@@ -82,7 +81,7 @@ X-Plane 自带 UDP RREF/DREF 提供本机状态和控制；本机原生 `XPC_for
 
 客户端与 X-Plane 在同一台电脑运行。默认自动发现信标，失败时尝试 `127.0.0.1:49000`；也可配置本机 UDP 地址和端口。MSFS 继续使用 SimConnect、原有模型扫描和 VMR 匹配。
 
-插件包固定复用 X-Plane 仓库 `v0.0.1` 的原生插件，校验完整发布包 SHA256 后只提取插件文件；来源、协议、源码及许可证见 `native/XPLANE-NOTICES.md`。首次源码构建需要 Python 作为打包工具，私有仓库下载需要 `gh` 登录；运行统一客户端不需要 Python。已有下载包也可运行：
+插件包固定复用 X-Plane 仓库 `v0.0.1` 的原生插件，校验完整发布包 SHA256 后只提取插件文件；来源、协议、源码及许可证见 `native/XPLANE-NOTICES.md`。打好的插件包已提交在 `native/` 下，构建不需要再下载；只有换插件版本时才需要重新打包（需要 Python，私有仓库下载需要 `gh` 登录），再提交新的压缩包：
 
 ```powershell
 python tools/package-xplane-plugin.py --source "路径/xpc-for-can-0.0.1-win-x64.zip"

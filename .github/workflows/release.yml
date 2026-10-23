@@ -11,15 +11,15 @@
 #
 # 只能在 Windows 上打：SimConnect、opus、RNNoise 都是 Windows x64 原生库。
 #
-# X-Plane 原生插件来自私有仓库 can-xplane-client 的固定发布包，匿名下载是 404。
-# 需要在本仓库 Settings → Secrets → Actions 里配 XPLANE_CLIENT_TOKEN：一个对
-# JianyueLab-Org/can-xplane-client 有 Contents 只读权限的 PAT。
+# X-Plane 原生插件包 native/XPC_for_CAN-plugin.zip 直接放在仓库里：它来自私有仓库
+# can-xplane-client 的固定发布包，CI 的 GITHUB_TOKEN 读不到别的私有仓库。换插件版本时
+# 在本地用 tools/package-xplane-plugin.py 重新打包再提交。
 
 name: 编译与发布
 
 on:
   push:
-    branches: [csharp-client, main]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -90,32 +90,6 @@ jobs:
           path: native/rnnoise/out/
           if-no-files-found: error
 
-  xplane-plugin:
-    # 固定版本的 X-Plane 原生插件，校验整个发布包的 SHA-256 后只取插件文件。
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: 打包 XPC_for_CAN-plugin.zip
-        shell: bash
-        env:
-          # package-xplane-plugin.py 匿名下载 404 时退回 gh release download，gh 读这个
-          GH_TOKEN: ${{ secrets.XPLANE_CLIENT_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${GH_TOKEN}" ]; then
-            echo "::error::没有配置 XPLANE_CLIENT_TOKEN。can-xplane-client 是私有仓库，需要一个对它有 Contents 只读权限的 PAT"
-            exit 1
-          fi
-          python tools/package-xplane-plugin.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: xplane-plugin
-          path: native/XPC_for_CAN-plugin.zip
-          if-no-files-found: error
-
   test:
     # 和 build 并行。测试没过就不发——release 同时依赖两者。
     runs-on: windows-latest
@@ -131,7 +105,7 @@ jobs:
           if ($LASTEXITCODE) { throw "测试没过" }
 
   build:
-    needs: [version, rnnoise, xplane-plugin]
+    needs: [version, rnnoise]
     runs-on: windows-latest
     env:
       OUTPUT: can-pilot
@@ -145,10 +119,6 @@ jobs:
         with:
           name: rnnoise-dll
           path: native/rnnoise/out
-      - uses: actions/download-artifact@v4
-        with:
-          name: xplane-plugin
-          path: native
       - name: 放 rnnoise.dll
         shell: pwsh
         # CanClient.Core.csproj 只在仓库根目录有这两个文件时才把它们带进输出
