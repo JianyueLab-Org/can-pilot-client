@@ -28,6 +28,8 @@ public sealed class VoiceOptions
 ///   - 切频道每秒比对一次目标和服务器上的实际位置，不靠一次性事件：掉线重连后服务器会把人放回
 ///     根频道，只比对本地记账的话就永远留在根频道里。
 ///   - 人在根频道就不发：频率频道永远是根的子频道，在根里说话是发给了根频道里的所有人。
+///   - 监听的频道不自己建：Murmur 建临时频道会把创建者直接放进去，人一走、频道里没人就删，监听不算人。
+///     替监听建频道会把人从 TX 频道拽走（TX 频道没人也跟着被删），再挪回去监听频道又没了，两边来回建、来回挪。
 /// </summary>
 public sealed class VoiceSession : IDisposable
 {
@@ -294,6 +296,7 @@ public sealed class VoiceSession : IDisposable
                 }
                 _channelWanted.Set();
             };
+            connection.ChannelAdded += () => _channelWanted.Set();
             connection.PermissionDenied += OnPermissionDenied;
             connection.UserRemoved += (session, kicked, reason) => OnUserRemoved(connection, session, kicked, reason);
             connection.AudioReceived += OnAudio;
@@ -418,28 +421,17 @@ public sealed class VoiceSession : IDisposable
         _channelWanted.Set();
     }
 
+    /// <summary>
+    /// 监听频道只挂已经存在的。频道还没有就先不听，等别人进来建好了（新频道一出现就会唤醒循环）再挂上。
+    /// </summary>
     private void SyncListener(MumbleConnection connection)
     {
         double? target;
         lock (_listenerLock)
             target = _pendingListener;
-        var name = target is { } frequency ? ChannelName(frequency) : null;
-        // 先撤旧监听，再解析新频道，避免调频后仍收到旧频率。
-        var channel = name is null ? null : connection.FindChannel(name);
+        var channel = target is { } frequency ? connection.FindChannel(ChannelName(frequency)) : null;
         connection.SetListeningChannels(channel is not null && channel.Id != connection.Myself?.ChannelId
             ? [channel.Id] : []);
-        if (name is null || channel is not null)
-            return;
-        _denial = null;
-        connection.CreateChannel(name);
-        channel = WaitForChannel(connection, name);
-        lock (_listenerLock)
-        {
-            if (_pendingListener != target)
-                return;
-        }
-        if (channel is not null && channel.Id != connection.Myself?.ChannelId)
-            connection.SetListeningChannels([channel.Id]);
     }
 
     private void NoteStuck(string reason)
@@ -478,16 +470,6 @@ public sealed class VoiceSession : IDisposable
                     SwitchChannel(connection, target.Value);
                 }
                 SyncListener(connection);
-                // Murmur 新建临时频道时可能自动把创建者移进去，立即恢复 TX 主频道。
-                lock (_listenerLock)
-                    target = _pending;
-                if (target is not null && (!InExpectedChannel(connection) || Frequency != target))
-                {
-                    Frequency = null;
-                    Channel = null;
-                    SwitchChannel(connection, target.Value);
-                    SyncListener(connection);
-                }
             }
             catch (Exception e)
             {
@@ -512,35 +494,40 @@ public sealed class VoiceSession : IDisposable
             if (frequency == Frequency)
                 return;
             var name = ChannelName(frequency);
-            var channel = connection.FindChannel(name);
-            if (channel is null)
+            for (var attempt = 1; ; attempt++)
             {
-                Log.Info($"channel {name} does not exist, creating a temporary one");
-                _denial = null;
-                connection.CreateChannel(name);
-                channel = WaitForChannel(connection, name);
-            }
-            if (channel is null)
-            {
-                Log.Warning($"channel {name} did not appear within {ChannelTimeout:F0} s of being created, retrying");
-                Diagnose(connection, name);
-                return;
-            }
-            var myself = connection.Myself;
-            if (myself is null)
-            {
-                Log.Warning($"myself is still unknown, skipping the switch to {name} this round");
-                return;
-            }
-            if (myself.ChannelId != channel.Id)
-            {
-                connection.MoveTo(channel.Id);
-                if (!WaitUntilIn(connection, channel.Id))
+                var channel = connection.FindChannel(name);
+                if (channel is null)
                 {
-                    Log.Warning($"sent the request to join {name} but it did not take effect within {ChannelTimeout:F0} s, will retry");
+                    // 建临时频道时服务器会直接把创建者放进去，不用再挪
+                    Log.Info($"channel {name} does not exist, creating a temporary one");
+                    _denial = null;
+                    connection.CreateChannel(name);
+                    channel = WaitForChannel(connection, name);
+                }
+                if (channel is null)
+                {
+                    Log.Warning($"channel {name} did not appear within {ChannelTimeout:F0} s of being created, retrying");
                     Diagnose(connection, name);
                     return;
                 }
+                var myself = connection.Myself;
+                if (myself is null)
+                {
+                    Log.Warning($"myself is still unknown, skipping the switch to {name} this round");
+                    return;
+                }
+                if (myself.ChannelId == channel.Id || (connection.MoveTo(channel.Id) && WaitUntilIn(connection, name, channel.Id)))
+                    break;
+                // 临时频道里的人走光了服务器就删掉它，挪人请求落空。重建一次，别对着已删的频道反复挪。
+                if (attempt == 1 && connection.FindChannel(name)?.Id != channel.Id)
+                {
+                    Log.Info($"channel {name} was removed before the move took effect, recreating it");
+                    continue;
+                }
+                Log.Warning($"sent the request to join {name} but it did not take effect within {ChannelTimeout:F0} s, will retry");
+                Diagnose(connection, name);
+                return;
             }
             Frequency = frequency;
             Channel = name;
@@ -571,13 +558,15 @@ public sealed class VoiceSession : IDisposable
         return connection.FindChannel(name);
     }
 
-    private bool WaitUntilIn(MumbleConnection connection, uint channelId)
+    private bool WaitUntilIn(MumbleConnection connection, string name, uint channelId)
     {
         var stopwatch = Stopwatch.StartNew();
         while (stopwatch.Elapsed.TotalSeconds < ChannelTimeout && _running)
         {
             if (connection.Myself?.ChannelId == channelId)
                 return true;
+            if (connection.FindChannel(name)?.Id != channelId)
+                return false;
             Thread.Sleep(100);
         }
         return false;

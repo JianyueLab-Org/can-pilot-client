@@ -115,6 +115,8 @@ public sealed class MumbleConnection : IDisposable
     public int MaxBandwidth { get; private set; }
 
     public event Action? Connected;
+    /// <summary>同步完成后服务器上新出现了一个频道。</summary>
+    public event Action? ChannelAdded;
     public event Action<string, string>? PermissionDenied;
     /// <summary>有人被移出服务器：(会话号, 是否被踢/被封, 理由)。</summary>
     public event Action<uint, bool, string>? UserRemoved;
@@ -336,15 +338,22 @@ public sealed class MumbleConnection : IDisposable
                 var state = MumbleProto.ChannelState.Parser.ParseFrom(body);
                 if (!state.HasChannelId)
                     break;
+                var added = false;
                 _channels.AddOrUpdate(state.ChannelId,
-                    _ => new MumbleChannel(state.ChannelId, state.HasName ? state.Name : "",
-                        state.HasParent ? state.Parent : null, state.HasTemporary && state.Temporary),
+                    _ =>
+                    {
+                        added = true;
+                        return new MumbleChannel(state.ChannelId, state.HasName ? state.Name : "",
+                            state.HasParent ? state.Parent : null, state.HasTemporary && state.Temporary);
+                    },
                     (_, old) => old with
                     {
                         Name = state.HasName ? state.Name : old.Name,
                         Parent = state.HasParent ? state.Parent : old.Parent,
                         Temporary = state.HasTemporary ? state.Temporary : old.Temporary
                     });
+                if (added && Synced)
+                    ChannelAdded?.Invoke();
                 break;
             }
             case MessageType.ChannelRemove:
@@ -668,13 +677,14 @@ public sealed class MumbleConnection : IDisposable
         Send(MessageType.ChannelState, new MumbleProto.ChannelState { Parent = parent, Name = name, Temporary = true });
     }
 
-    /// <summary>把自己挪进某个频道。</summary>
-    public void MoveTo(uint channelId)
+    /// <summary>把自己挪进某个频道。还没有会话号时什么也不发，返回 false。</summary>
+    public bool MoveTo(uint channelId)
     {
         if (MySession is not { } session)
-            return;
+            return false;
         Log.Info($"-> sending UserState (move) session={session} channel={channelId}");
         Send(MessageType.UserState, new MumbleProto.UserState { Session = session, ChannelId = channelId });
+        return true;
     }
 
     /// <summary>频道监听只接收，发话在实际加入的 TX 电台频道。状态以服务器 UserState 回报为准。</summary>
