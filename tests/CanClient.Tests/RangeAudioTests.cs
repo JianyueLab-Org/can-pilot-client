@@ -192,6 +192,31 @@ public class RangeAudioTests
         }
     }
 
+    [Fact]
+    public async Task BuildFailureKeepsLoopAliveAndAllowsEveryone()
+    {
+        using var called = new ManualResetEventSlim();
+        using var http = new HttpClient(new RangeDataHandler());
+        using var service = new RangeAudioService(() =>
+        {
+            called.Set();
+            throw new InvalidOperationException("position lookup broke");
+        }, http);
+
+        service.Start();
+        var loop = service.LoopCompletion;
+        Assert.True(called.Wait(TimeSpan.FromSeconds(10)), "Refresh did not reach Build");
+        // 旧实现在这里循环就挂了：任务 Faulted、CTS 被释放，Stop 再 Cancel 会抛异常
+        await Task.Delay(200);
+        Assert.False(loop.IsCompleted);
+        Assert.True(service.Running);
+        Assert.Empty(service.Policy);
+
+        service.Stop();
+        await loop.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(loop.IsCompletedSuccessfully);
+    }
+
     private sealed class RangeDataHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>

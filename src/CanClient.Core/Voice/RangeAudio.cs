@@ -173,6 +173,7 @@ public sealed class RangeAudioService : IDisposable
         public List<RangeStation> Stations { get; set; } = [];
         public DateTime FetchedAt { get; set; } = DateTime.MinValue;
         public bool Failing { get; set; }
+        public bool BuildFailing { get; set; }
     }
 
     /// <param name="ownPosition">自己的 CID 和模拟器位置；没有模拟器位置时返回 (cid, NaN, NaN)，到 data.json 里按 CID 找；没有 CID 返回 null。</param>
@@ -229,7 +230,15 @@ public sealed class RangeAudioService : IDisposable
         {
             while (!cancellation.IsCancellationRequested)
             {
-                await RefreshAsync(run, cancellation).ConfigureAwait(false);
+                try
+                {
+                    await RefreshAsync(run, cancellation).ConfigureAwait(false);
+                }
+                catch (Exception e) when (!cancellation.IsCancellationRequested)
+                {
+                    // 兜底：循环只能因 Stop 退出，否则快照会冻在最后一次的结果上
+                    Log.Warning($"range refresh raised: {e}");
+                }
                 await Task.Delay(PollInterval, cancellation).ConfigureAwait(false);
             }
         }
@@ -272,7 +281,20 @@ public sealed class RangeAudioService : IDisposable
         }
         if (cancellation.IsCancellationRequested)
             return;
-        var policy = DateTime.UtcNow - run.FetchedAt > StaleAfter ? Empty : Build(run.Stations);
+        IReadOnlyDictionary<string, bool> policy;
+        try
+        {
+            policy = DateTime.UtcNow - run.FetchedAt > StaleAfter ? Empty : Build(run.Stations);
+            run.BuildFailing = false;
+        }
+        catch (Exception e)
+        {
+            // 算不出来就全部放行，和拿不到位置一样
+            if (!run.BuildFailing)
+                Log.Warning($"could not build range policy: {e.Message}");
+            run.BuildFailing = true;
+            policy = Empty;
+        }
         lock (_lifecycleLock)
         {
             // 与 Stop 的清空操作原子互斥，并拒绝已经被新一轮启动替换的发布者。
