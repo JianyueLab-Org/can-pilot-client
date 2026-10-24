@@ -369,10 +369,11 @@ public sealed class TrafficTable
 
     private static bool TryDouble(JsonValue value, out double result)
     {
-        if (value.TryGetValue(out result))
+        // 字符串 "NaN" / "Infinity" 也能解析出来，不拦住会经 Math.Clamp 原样进 Flaps
+        if (value.TryGetValue(out result) && double.IsFinite(result))
             return true;
         if (value.TryGetValue(out string? text) && double.TryParse(text, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out result))
+                System.Globalization.CultureInfo.InvariantCulture, out result) && double.IsFinite(result))
             return true;
         result = 0;
         return false;
