@@ -1,0 +1,47 @@
+# Arch Linux 包：直接用 GitHub Release 里的 linux-x64 自包含单文件包，装到 /opt/can-pilot。
+# CI（.github/workflows/release.yml 的 arch 任务）每次发版把 pkgver 和 sha256sums 填好、打出
+# can-pilot-bin-*.pkg.tar.zst 并把填好的 PKGBUILD 一起挂到 Release；也可以拿它去发 AUR。
+#
+# 程序目录 /opt 不可写，设置和日志自动放到 ~/.local/share/CAN Pilot Client。
+# 键盘 / 鼠标 PTT 读 /dev/input，用户需要在 input 组：sudo usermod -aG input $USER，重新登录生效。
+
+pkgname=can-pilot-bin
+pkgver=3.0.0
+pkgrel=1
+pkgdesc="CAN 连飞网络飞行员客户端（X-Plane）"
+arch=('x86_64')
+url="https://github.com/JianyueLab-Org/can-pilot-client"
+license=('LicenseRef-can-pilot')
+# .NET 运行时要 glibc / libstdc++ / ICU；Avalonia 走 X11（Wayland 下经 XWayland），Skia 要 fontconfig。
+# OpenAL Soft 随包，运行时按需加载 PipeWire / PulseAudio / ALSA。
+depends=('glibc' 'gcc-libs' 'zlib' 'icu' 'fontconfig' 'freetype2'
+         'libx11' 'libice' 'libsm' 'libxi' 'libxcursor' 'libxrandr' 'libxext')
+optdepends=('noto-fonts-cjk: 界面中文字体（没装任何中文字体时显示成方框）'
+            'pipewire-pulse: 语音收发（或 pulseaudio / pipewire-alsa）'
+            'xorg-xwayland: Wayland 桌面下运行')
+provides=('can-pilot')
+conflicts=('can-pilot')
+# 单文件程序的托管部分附在 ELF 后面，strip 会把它截掉
+options=('!strip' '!debug')
+source=("can-pilot-v${pkgver}-linux-x64.tar.gz::${url}/releases/download/v${pkgver}/can-pilot-v${pkgver}-linux-x64.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  install -d "${pkgdir}/opt/can-pilot"
+  cp -a "${srcdir}/can-pilot/." "${pkgdir}/opt/can-pilot/"
+  rm -rf "${pkgdir}/opt/can-pilot/desktop"
+  chmod 755 "${pkgdir}/opt/can-pilot/can-pilot"
+
+  # 用包装脚本而不是软链：程序按自身所在目录找随包文件
+  install -d "${pkgdir}/usr/bin"
+  printf '#!/bin/sh\nexec /opt/can-pilot/can-pilot "$@"\n' > "${pkgdir}/usr/bin/can-pilot"
+  chmod 755 "${pkgdir}/usr/bin/can-pilot"
+
+  install -Dm644 "${srcdir}/can-pilot/desktop/can-pilot.desktop" "${pkgdir}/usr/share/applications/can-pilot.desktop"
+  install -Dm644 "${srcdir}/can-pilot/desktop/can-pilot.png" "${pkgdir}/usr/share/icons/hicolor/64x64/apps/can-pilot.png"
+  for notice in XPLANE-NOTICES.md RNNOISE-COPYING; do
+    if [ -f "${srcdir}/can-pilot/${notice}" ]; then
+      install -Dm644 "${srcdir}/can-pilot/${notice}" "${pkgdir}/usr/share/licenses/${pkgname}/${notice}"
+    fi
+  done
+}
