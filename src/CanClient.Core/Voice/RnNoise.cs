@@ -27,6 +27,8 @@ public sealed class Denoiser : IDisposable
 
     private IntPtr _state;
     private readonly float[] _buffer = new float[Frame];
+    // 采集线程在 Process，断开语音的线程在 Dispose：原生状态释放不能和正在跑的那一帧重叠
+    private readonly object _gate = new();
 
     /// <summary>RNNoise 库能不能用。只试一次。</summary>
     public static bool Available
@@ -75,27 +77,36 @@ public sealed class Denoiser : IDisposable
     /// <summary>就地处理一帧（长度必须是 480 的整数倍）。</summary>
     public unsafe void Process(Span<short> samples)
     {
-        if (!Active || samples.Length == 0 || samples.Length % Frame != 0)
+        if (samples.Length == 0 || samples.Length % Frame != 0)
             return;
-        fixed (float* buffer = _buffer)
+        lock (_gate)
         {
-            for (var offset = 0; offset < samples.Length; offset += Frame)
+            if (!Active)
+                return;
+            fixed (float* buffer = _buffer)
             {
-                for (var i = 0; i < Frame; i++)
-                    buffer[i] = samples[offset + i];
-                rnnoise_process_frame(_state, buffer, buffer);
-                for (var i = 0; i < Frame; i++)
-                    samples[offset + i] = (short)Math.Clamp(MathF.Round(buffer[i]), -32768, 32767);
+                for (var offset = 0; offset < samples.Length; offset += Frame)
+                {
+                    for (var i = 0; i < Frame; i++)
+                        buffer[i] = samples[offset + i];
+                    rnnoise_process_frame(_state, buffer, buffer);
+                    for (var i = 0; i < Frame; i++)
+                        samples[offset + i] = (short)Math.Clamp(MathF.Round(buffer[i]), -32768, 32767);
+                }
             }
         }
     }
 
+    /// <summary>等正在处理的那一帧做完再释放；之后再调 Process 直接返回。</summary>
     public void Dispose()
     {
-        if (_state != IntPtr.Zero)
+        lock (_gate)
         {
-            rnnoise_destroy(_state);
-            _state = IntPtr.Zero;
+            if (_state != IntPtr.Zero)
+            {
+                rnnoise_destroy(_state);
+                _state = IntPtr.Zero;
+            }
         }
     }
 }
