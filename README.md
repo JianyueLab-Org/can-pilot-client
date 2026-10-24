@@ -1,7 +1,7 @@
 # CAN Pilot Client
 
 CAN 连飞网络的统一飞行员客户端，支持 Microsoft Flight Simulator（2020 / 2024）与 X-Plane（11.50+ / 12），C# / .NET 10 实现。
-同一套代码发布 Windows、macOS、Linux 三个平台：Windows 版同时支持 MSFS 和 X-Plane；macOS（一个通用包同时支持 Apple Silicon 和 Intel）和 Linux x64（以 Arch 为主，其他发行版用通用 tar.gz）版只接 X-Plane（MSFS 依赖 Windows 上的 SimConnect），FSD、语音、PTT、消息和设置在三个平台上一致。
+同一套代码发布 Windows、macOS、Linux 三个平台：Windows 版同时支持 MSFS 和 X-Plane；macOS（仅 Apple Silicon ARM64）和 Linux x64（通用 tar.gz）版只接 X-Plane（MSFS 依赖 Windows 上的 SimConnect），FSD、语音、PTT、消息和设置在三个平台上一致。
 已整合 [can-xplane-client](https://github.com/JianyueLab-Org/can-xplane-client) 的模拟器接入和原生交通插件协议，两种模拟器共用同一个 EXE、FSD、C# 语音引擎、消息和设置，不需要 Python 语音进程。
 界面基于 [can-client-ui](https://github.com/JianyueLab-Org/can-client-ui)（Avalonia，布局参考 vPilot），
 他机模型匹配按 vPilot 的做法实现。
@@ -11,7 +11,7 @@ CAN 连飞网络的统一飞行员客户端，支持 Microsoft Flight Simulator�
 
 ## 环境
 
-- Windows x64、macOS 12+（arm64 / x64）或 Linux x64，[.NET 10 SDK](https://dotnet.microsoft.com/download)。
+- Windows x64、macOS 12+（仅 Apple Silicon ARM64）或 Linux x64，[.NET 10 SDK](https://dotnet.microsoft.com/download)。
 - 实际联飞需要启动 MSFS（仅 Windows）或 X-Plane，准备 CAN 账号，并能访问所选语音 / FSD 服务器。
 - 可选：RNNoise 麦克风降噪。Windows 需要 CMake + Visual Studio 2022 Build Tools（C++ 桌面开发）；macOS / Linux 需要 CMake 和 C 编译器（Xcode 命令行工具 / gcc）。
 
@@ -31,7 +31,7 @@ pwsh -File build.ps1                        # Windows：构建 RNNoise、准备 
 原生库在运行时自动解压到 .NET 缓存。分发整个 `dist/can-pilot/`（EXE、MSFS 模型库、X-Plane 插件压缩包、许可证及来源说明），入口为 `can-pilot.exe`。版本系列 `3.0` 写在 `Directory.Build.props`；
 也可在构建前设置 `$env:CAN_VERSION` 覆盖，程序标题和版本检查与发布包保持一致。
 
-macOS / Linux 同样是自包含单文件发布。macOS 默认输出通用的 `dist/CAN Pilot.app`：里面是 arm64 和 x64 两份单文件程序，外加一个通用的小入口（`tools/macos-launcher.c`）按本机芯片启动对应那份（.NET 单文件程序不能用 lipo 合并）；`tools/make-macos-app.sh` 生成 Info.plist、图标并做 ad-hoc 签名。Linux 输出 `dist/can-pilot/` 和 tar.gz，入口为 `can-pilot`。
+macOS / Linux 同样是自包含单文件发布。macOS 输出仅支持 Apple Silicon ARM64 的 `dist/CAN Pilot.app`，内含一份 ARM64 单文件程序；`tools/make-macos-app.sh` 生成 Info.plist、图标并做 ad-hoc 签名。Linux 输出 `dist/can-pilot/` 和通用 tar.gz，入口为 `can-pilot`。
 
 ### macOS / Linux（只支持 X-Plane）
 
@@ -40,9 +40,8 @@ macOS / Linux 同样是自包含单文件发布。macOS 默认输出通用的 `d
 - **PTT**：键盘、鼠标侧键、摇杆都支持，绑定仍按 Windows 虚拟键码存，配置跨平台通用。
   - macOS：键盘 / 鼠标侧键用 CoreGraphics 读取，需要在“系统设置 → 隐私与安全性 → 输入监控”允许 CAN Pilot（首次使用时会请求，授权后重启客户端）；摇杆走 IOKit HID，无需额外权限。
   - Linux：直接读 evdev（`/dev/input/event*`），X11 和 Wayland 下都全局有效。键盘和鼠标节点一般只有 `input` 组可读，需执行 `sudo usermod -aG input $USER` 后重新登录；读不到时日志里会提示。
-- **文件位置**：Linux 与 Windows 一样，设置和 `logs/` 放在程序目录；程序目录不可写时（如 Arch 包装在 `/opt/can-pilot`）两者都放 `$XDG_DATA_HOME/CAN Pilot Client`（默认 `~/.local/share/CAN Pilot Client`）。macOS 的 `.app` 包里不写文件，设置和日志在 `~/Library/Application Support/CAN Pilot Client`。
-- **Linux 安装**：以 Arch 为主。Release 附 `can-pilot-bin-*.pkg.tar.zst`（`sudo pacman -U` 安装到 `/opt/can-pilot`，带菜单项和 `can-pilot` 命令）和填好版本的 `PKGBUILD`（`packaging/arch/PKGBUILD`，可用于 AUR）。其他 glibc 发行版解压 `linux-x64.tar.gz` 直接运行 `can-pilot/can-pilot`，`desktop/` 里的菜单文件和图标可拷到 `~/.local/share/applications`、`~/.local/share/icons/hicolor/64x64/apps`。运行依赖：ICU、fontconfig、X11 基础库（Wayland 下经 XWayland）、一种中文字体：
-  - Arch：`sudo pacman -S icu fontconfig libx11 libice libsm libxi libxcursor libxrandr noto-fonts-cjk`（装 pacman 包时自动处理，中文字体是可选依赖）
+- **文件位置**：Linux 与 Windows 一样，设置和 `logs/` 放在程序目录；程序目录不可写时两者都放 `$XDG_DATA_HOME/CAN Pilot Client`（默认 `~/.local/share/CAN Pilot Client`）。macOS 的 `.app` 包里不写文件，设置和日志在 `~/Library/Application Support/CAN Pilot Client`。
+- **Linux 安装**：Release 提供通用的 `linux-x64.tar.gz`，适用于 glibc 发行版，解压后直接运行 `can-pilot/can-pilot`。`desktop/` 里的菜单文件和图标可拷到 `~/.local/share/applications`、`~/.local/share/icons/hicolor/64x64/apps`。运行依赖：ICU、fontconfig、X11 基础库（Wayland 下经 XWayland）、一种中文字体：
   - Debian / Ubuntu：`sudo apt install libicu-dev fontconfig libx11-6 libice6 libsm6 libxi6 libxcursor1 libxrandr2 fonts-noto-cjk`
   - Fedora：`sudo dnf install libicu fontconfig libX11 libICE libSM libXi libXcursor libXrandr google-noto-sans-cjk-fonts`
   - 不支持 musl 发行版（如 Alpine）。
@@ -52,7 +51,7 @@ macOS / Linux 同样是自包含单文件发布。macOS 默认输出通用的 `d
 ### 自动发布
 
 `.github/workflows/release.yml` 在推到默认分支时在 Windows / macOS / Linux 上跑测试、编译各平台 RNNoise、
-发布 `can-pilot-v3.0.x-win-x64.zip`、`-osx-universal.zip`、`-linux-x64.tar.gz` 和 Arch 的 `can-pilot-bin-*.pkg.tar.zst`、`PKGBUILD`，再打标签并建 GitHub Release（附 `SHA256SUMS`）。macOS / Linux 包发布前会在 CI 里真的启动一次（Linux 用 Xvfb，macOS 分别跑原生 arm64 和 Rosetta 下的 x64），30 秒内退出就不发。PR 也跑同样的测试、打包和启动检查，只是不发版。
+发布 `can-pilot-v3.0.x-win-x64.zip`、`-osx-arm64.zip`、`-linux-x64.tar.gz`，再打标签并建 GitHub Release（附 `SHA256SUMS`）。macOS / Linux 包发布前会在 CI 里真的启动一次（Linux 用 Xvfb，macOS 跑原生 ARM64），30 秒内退出就不发。PR 也跑同样的测试、打包和启动检查，只是不发版。
 补丁号由已有的 `v3.0.*` 标签加一得出，第一次是 `v3.0.0`；想换到 3.1 就把
 `Directory.Build.props` 和工作流里的 `SERIES` 一起改。手动触发或推到其他分支只在
 Actions 里留产物，不发版、不占版本号。
