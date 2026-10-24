@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=CAN Pilot Client
+Name[zh_CN]=CAN 飞行员客户端
+Comment=CAN pilot client for X-Plane
+Comment[zh_CN]=CAN 连飞网络飞行员客户端（X-Plane）
+Exec=can-pilot
+Icon=can-pilot
+Terminal=false
+Categories=Game;Simulation;
+StartupWMClass=can-pilot

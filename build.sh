@@ -3,9 +3,12 @@
 #   ./build.sh                    按本机平台构建，输出到 dist/
 #   ./build.sh --skip-rnnoise     不构建 RNNoise（没装 CMake / 编译器时，客户端照常运行，只是没有麦克风降噪）
 #   ./build.sh --skip-tests       不跑测试
-#   ./build.sh --rid osx-x64      指定目标：osx-arm64 / osx-x64 / linux-x64 / linux-arm64
-# macOS 输出 dist/CAN Pilot.app；Linux 输出 dist/can-pilot/ 目录，入口为 can-pilot。
+#   ./build.sh --target osx-x64   指定目标：osx-universal（macOS 默认）/ osx-arm64 / osx-x64 / linux-x64 / linux-arm64
+# macOS 输出 dist/CAN Pilot.app（默认是 Apple Silicon + Intel 通用包）；
+# Linux 输出 dist/can-pilot/ 目录和 dist/can-pilot-linux-*.tar.gz，入口为 can-pilot。
 # 版本号默认取 Directory.Build.props；需要时构建前设置 CAN_VERSION 覆盖。
+#
+# 注意：echo 里变量紧挨中文时一律写成 ${var}——macOS 的 bash 会把全角标点的字节当成变量名的一部分。
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")" && pwd)
@@ -13,62 +16,67 @@ cd "$root"
 
 skip_rnnoise=0
 skip_tests=0
-rid=""
+target=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-rnnoise) skip_rnnoise=1 ;;
     --skip-tests) skip_tests=1 ;;
-    --rid) rid=$2; shift ;;
+    --target|--rid) target=$2; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
 done
 
-if [ -z "$rid" ]; then
+if [ -z "$target" ]; then
   case "$(uname -s)-$(uname -m)" in
-    Darwin-arm64) rid=osx-arm64 ;;
-    Darwin-x86_64) rid=osx-x64 ;;
-    Linux-x86_64) rid=linux-x64 ;;
-    Linux-aarch64) rid=linux-arm64 ;;
+    Darwin-*) target=osx-universal ;;
+    Linux-x86_64) target=linux-x64 ;;
+    Linux-aarch64) target=linux-arm64 ;;
     *) echo "unsupported platform $(uname -s) $(uname -m)" >&2; exit 2 ;;
   esac
 fi
 
-case "$rid" in
-  osx-arm64) lib=librnnoise.dylib; arch=arm64 ;;
-  osx-x64) lib=librnnoise.dylib; arch=x86_64 ;;
-  linux-*) lib=librnnoise.so; arch="" ;;
-  *) echo "unsupported target $rid" >&2; exit 2 ;;
+case "$target" in
+  osx-universal) rids="osx-arm64 osx-x64"; lib=librnnoise.dylib; arch="arm64;x86_64" ;;
+  osx-arm64) rids=osx-arm64; lib=librnnoise.dylib; arch=arm64 ;;
+  osx-x64) rids=osx-x64; lib=librnnoise.dylib; arch=x86_64 ;;
+  linux-x64|linux-arm64) rids=$target; lib=librnnoise.so; arch="" ;;
+  *) echo "unsupported target ${target}" >&2; exit 2 ;;
 esac
 
 if [ "$skip_rnnoise" -eq 0 ]; then
-  # 每个目标单独构建，避免把另一种架构的库打进去；CanClient.Core.csproj 从仓库根目录取
-  bash native/rnnoise/build.sh "$root/native/rnnoise/out-$rid" "$arch"
-  cp "native/rnnoise/out-$rid/$lib" "$root/$lib"
-  cp "native/rnnoise/out-$rid/RNNOISE-COPYING" "$root/RNNOISE-COPYING"
+  # 每个目标单独构建（macOS 通用包构建 arm64 + x86_64 的通用 dylib），CanClient.Core.csproj 从仓库根目录取
+  bash native/rnnoise/build.sh "${root}/native/rnnoise/out-${target}" "$arch"
+  cp "native/rnnoise/out-${target}/${lib}" "${root}/${lib}"
+  cp "native/rnnoise/out-${target}/RNNOISE-COPYING" "${root}/RNNOISE-COPYING"
 fi
 
 if [ "$skip_tests" -eq 0 ]; then
   dotnet test CanMfsClient.slnx -c Release
 fi
 
-publish="$root/dist/can-pilot-$rid"
-rm -rf "$publish"
-# 不裁剪：Avalonia、JSON 设置和 protobuf 仍需要完整的运行时类型信息。
-dotnet publish src/CanClient/CanClient.csproj -c Release -r "$rid" --self-contained true -o "$publish" \
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
-  -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+for rid in $rids; do
+  rm -rf "${root}/dist/publish-${rid}"
+  # 不裁剪：Avalonia、JSON 设置和 protobuf 仍需要完整的运行时类型信息。
+  dotnet publish src/CanClient/CanClient.csproj -c Release -r "$rid" --self-contained true -o "${root}/dist/publish-${rid}" \
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+    -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+done
 
 version=${CAN_VERSION:-$(sed -n "s/.*<Version Condition=\"'\$(CAN_VERSION)' == ''\">\([0-9.]*\)<\/Version>.*/\1/p" Directory.Build.props)}
-case "$rid" in
+case "$target" in
+  osx-universal)
+    bash tools/make-macos-app.sh "${root}/dist/CAN Pilot.app" "$version" "${root}/dist/publish-osx-arm64" "${root}/dist/publish-osx-x64"
+    echo "已输出 dist/CAN Pilot.app（Apple Silicon + Intel 通用，版本 ${version}）"
+    ;;
   osx-*)
-    bash tools/make-macos-app.sh "$publish" "$root/dist/CAN Pilot.app" "$version"
-    echo "已输出 dist/CAN Pilot.app（$rid，版本 $version）"
+    bash tools/make-macos-app.sh "${root}/dist/CAN Pilot.app" "$version" "${root}/dist/publish-${target}"
+    echo "已输出 dist/CAN Pilot.app（${target}，版本 ${version}）"
     ;;
   *)
-    rm -rf "$root/dist/can-pilot"
-    mv "$publish" "$root/dist/can-pilot"
-    chmod +x "$root/dist/can-pilot/can-pilot"
-    echo "已输出 dist/can-pilot/（$rid，版本 $version），分发整个目录，入口为 can-pilot"
+    bash tools/package-linux.sh "${root}/dist/publish-${target}" "${root}/dist/can-pilot-${target}.tar.gz"
+    rm -rf "${root}/dist/can-pilot"
+    mv "${root}/dist/publish-${target}" "${root}/dist/can-pilot"
+    echo "已输出 dist/can-pilot/ 和 dist/can-pilot-${target}.tar.gz（版本 ${version}），入口为 can-pilot"
     ;;
 esac

@@ -10,7 +10,9 @@
 # 已发布版本的唯一事实来源。v0.0.x 那几个老标签不在本系列里，不参与计数。
 #
 # 发三个平台：Windows x64（MSFS + X-Plane；SimConnect、opus、RNNoise 是 x64 原生库，只能在 Windows 上打）、
-# macOS arm64 / x64（CAN Pilot.app，要在 macOS 上做 ad-hoc 签名）、Linux x64（tar.gz）。macOS / Linux 只接 X-Plane。
+# macOS 通用包（一个 CAN Pilot.app 同时支持 Apple Silicon 和 Intel，要在 macOS 上做 ad-hoc 签名）、
+# Linux x64（Arch 的 pacman 包 + 其他发行版通用的 tar.gz）。macOS / Linux 只接 X-Plane。
+# PR 也跑全部测试、打包和启动冒烟测试，只是不发版。
 #
 # X-Plane 原生插件包 native/XPC_for_CAN-plugin.zip 直接放在仓库里：它来自私有仓库
 # can-xplane-client 的固定发布包，CI 的 GITHUB_TOKEN 读不到别的私有仓库。换插件版本时
@@ -21,6 +23,7 @@ name: 编译与发布
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -28,9 +31,10 @@ permissions:
 
 # 两次推送挨得很近时会同时算出同一个补丁号，然后第二个打标签失败。
 # 串行化，后面那个会重新数一遍。
+# PR 各自一组，新提交取消旧的那次。
 concurrency:
-  group: release
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || 'release' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   SERIES: "3.0"          # 自动递增只在这个系列里进行；要和 Directory.Build.props 的默认 Version 同系列
@@ -92,28 +96,27 @@ jobs:
           if-no-files-found: error
 
   rnnoise-unix:
-    # macOS / Linux 的 RNNoise：同一个发布包和 CMakeLists，用 build.sh 构建 .dylib / .so。
+    # macOS / Linux 的 RNNoise：同一个发布包和 CMakeLists，用 build.sh 构建 .so / 通用 .dylib。
     strategy:
       matrix:
         include:
-          - { os: ubuntu-latest, rid: linux-x64, arch: '' }
-          - { os: macos-latest, rid: osx-arm64, arch: arm64 }
-          - { os: macos-latest, rid: osx-x64, arch: x86_64 }
+          - { os: ubuntu-latest, target: linux-x64, arch: '' }
+          - { os: macos-latest, target: osx-universal, arch: 'arm64;x86_64' }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
         id: cache
         with:
-          path: native/rnnoise/out-${{ matrix.rid }}
-          key: rnnoise-0.2-${{ matrix.rid }}-${{ hashFiles('native/rnnoise/CMakeLists.txt', 'native/rnnoise/build.sh', 'native/rnnoise/compat/os_support.h') }}
+          path: native/rnnoise/out-${{ matrix.target }}
+          key: rnnoise-0.2-${{ matrix.target }}-${{ hashFiles('native/rnnoise/CMakeLists.txt', 'native/rnnoise/build.sh', 'native/rnnoise/compat/os_support.h') }}
       - name: 构建 librnnoise
         if: steps.cache.outputs.cache-hit != 'true'
-        run: bash native/rnnoise/build.sh "native/rnnoise/out-${{ matrix.rid }}" "${{ matrix.arch }}"
+        run: bash native/rnnoise/build.sh "native/rnnoise/out-${{ matrix.target }}" "${{ matrix.arch }}"
       - uses: actions/upload-artifact@v4
         with:
-          name: rnnoise-${{ matrix.rid }}
-          path: native/rnnoise/out-${{ matrix.rid }}/
+          name: rnnoise-${{ matrix.target }}
+          path: native/rnnoise/out-${{ matrix.target }}/
           if-no-files-found: error
 
   test:
@@ -198,19 +201,14 @@ jobs:
           path: dist/*.zip
           if-no-files-found: error
 
-  build-unix:
-    # macOS / Linux：只接 X-Plane。单文件程序 + 随包文件；macOS 包成 CAN Pilot.app 并做 ad-hoc 签名。
+  build-linux:
+    # Linux x64：只接 X-Plane。自包含单文件 + 随包文件 + 桌面文件，打成 tar.gz，任何 glibc 发行版都能直接解压运行；
+    # Arch 另由下面的 arch 任务打成 pacman 包。
     needs: [version, rnnoise-unix]
-    strategy:
-      matrix:
-        include:
-          - { os: ubuntu-latest, rid: linux-x64 }
-          - { os: macos-latest, rid: osx-arm64 }
-          - { os: macos-latest, rid: osx-x64 }
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     env:
       OUTPUT: can-pilot
-      RID: ${{ matrix.rid }}
+      RID: linux-x64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -219,66 +217,165 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: rnnoise-${{ matrix.rid }}
-          path: native/rnnoise/out-${{ matrix.rid }}
+          name: rnnoise-linux-x64
+          path: native/rnnoise/out-linux-x64
       - name: 放 librnnoise
         # CanClient.Core.csproj 只在仓库根目录有这些文件时才把它们带进输出
-        run: cp native/rnnoise/out-$RID/librnnoise.* native/rnnoise/out-$RID/RNNOISE-COPYING .
+        run: cp native/rnnoise/out-linux-x64/librnnoise.so native/rnnoise/out-linux-x64/RNNOISE-COPYING .
 
-      - name: 发布 ${{ matrix.rid }}
+      - name: 发布 linux-x64
         env:
-          # Directory.Build.props 读它；标题栏、日志、更新检查报的都是它
           CAN_VERSION: ${{ needs.version.outputs.number }}
-        # 参数和 build.sh 一致：自包含单文件，原生库打进程序，不裁剪
         run: |
-          dotnet publish src/CanClient/CanClient.csproj -c Release -r "$RID" --self-contained true -o "dist/$OUTPUT" \
+          dotnet publish src/CanClient/CanClient.csproj -c Release -r "$RID" --self-contained true -o "dist/${OUTPUT}" \
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
 
       - name: 验随包文件
+        run: bash tools/ci-check-package.sh "dist/${OUTPUT}" can-pilot lin.xpl
+
+      - name: 启动冒烟测试
+        # 在虚拟 X 显示器里真的把程序跑起来，30 秒内退出就算启动失败；用副本跑，日志和设置不进包
         run: |
-          set -euo pipefail
-          root="dist/$OUTPUT"
-          missing=""
-          for f in can-pilot XPC_for_CAN-plugin.zip XPLANE-NOTICES.md RNNOISE-COPYING; do
-            [ -e "$root/$f" ] || missing="$missing $f"
-          done
-          if [ -n "$missing" ]; then echo "::error::包里缺这些文件:$missing"; exit 1; fi
-          # 固定发布包里只有 Windows 版交通插件；缺本平台插件时他机显示不了，联飞、语音照常。不挡发布，只提醒
-          case "$RID" in osx-*) xpl=mac.xpl ;; *) xpl=lin.xpl ;; esac
-          if ! unzip -l "$root/XPC_for_CAN-plugin.zip" | grep -q "XPC_for_CAN/64/$xpl"; then
-            echo "::warning::XPC_for_CAN-plugin.zip 里没有 $xpl，$RID 版暂时无法安装 X-Plane 交通插件"
+          sudo apt-get install -y -qq xvfb >/dev/null
+          smoke="${RUNNER_TEMP}/smoke"
+          cp -R "dist/${OUTPUT}" "$smoke"
+          set +e
+          (cd "$smoke" && xvfb-run -a timeout 30 ./can-pilot)
+          code=$?
+          set -e
+          cat "$smoke"/logs/*.log || true
+          if [ "$code" -ne 124 ]; then
+            echo "::error::Linux 版启动后 30 秒内就退出了（退出码 ${code}），见上面的日志"
+            exit 1
           fi
 
       - name: 压包
-        env:
-          TAG: ${{ needs.version.outputs.tag }}
-          VERSION: ${{ needs.version.outputs.number }}
-        run: |
-          set -euo pipefail
-          case "$RID" in
-            osx-*)
-              bash tools/make-macos-app.sh "dist/$OUTPUT" "dist/CAN Pilot.app" "$VERSION"
-              (cd dist && ditto -c -k --keepParent "CAN Pilot.app" "$OUTPUT-$TAG-$RID.zip")
-              ;;
-            *)
-              chmod +x "dist/$OUTPUT/can-pilot"
-              tar -czf "dist/$OUTPUT-$TAG-$RID.tar.gz" -C dist "$OUTPUT"
-              ;;
-          esac
+        run: bash tools/package-linux.sh "dist/${OUTPUT}" "dist/${OUTPUT}-${{ needs.version.outputs.tag }}-linux-x64.tar.gz"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: can-pilot-${{ matrix.rid }}
-          path: |
-            dist/*.zip
-            dist/*.tar.gz
+          name: can-pilot-linux-x64
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  build-macos:
+    # macOS 通用包：分别发布 arm64 和 x64，再合进一个 CAN Pilot.app（见 tools/make-macos-app.sh），
+    # Apple Silicon 和 Intel 用同一个下载。只接 X-Plane。
+    needs: [version, rnnoise-unix]
+    runs-on: macos-latest
+    env:
+      OUTPUT: can-pilot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: rnnoise-osx-universal
+          path: native/rnnoise/out-osx-universal
+      - name: 放 librnnoise（arm64 + x86_64 通用 dylib）
+        run: cp native/rnnoise/out-osx-universal/librnnoise.dylib native/rnnoise/out-osx-universal/RNNOISE-COPYING .
+
+      - name: 发布 osx-arm64 / osx-x64
+        env:
+          CAN_VERSION: ${{ needs.version.outputs.number }}
+        run: |
+          for rid in osx-arm64 osx-x64; do
+            dotnet publish src/CanClient/CanClient.csproj -c Release -r "$rid" --self-contained true -o "dist/publish-${rid}" \
+              -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+              -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+          done
+
+      - name: 验随包文件
+        run: |
+          bash tools/ci-check-package.sh dist/publish-osx-arm64 can-pilot mac.xpl
+          bash tools/ci-check-package.sh dist/publish-osx-x64 can-pilot mac.xpl
+
+      - name: 打 CAN Pilot.app
+        run: bash tools/make-macos-app.sh "dist/CAN Pilot.app" "${{ needs.version.outputs.number }}" dist/publish-osx-arm64 dist/publish-osx-x64
+
+      - name: 启动冒烟测试（Apple Silicon 原生 + Rosetta 跑 Intel 版）
+        # 用副本跑，30 秒内退出就算启动失败；设置和日志写在 ~/Library/Application Support/CAN Pilot Client
+        run: |
+          app="${RUNNER_TEMP}/CAN Pilot.app"
+          cp -R "dist/CAN Pilot.app" "$app"
+          logs="${HOME}/Library/Application Support/CAN Pilot Client/logs"
+          smoke() {
+            local label=$1; shift
+            "$@" &
+            local pid=$!
+            sleep 30
+            if kill -0 "$pid" 2>/dev/null; then
+              kill "$pid"; wait "$pid" 2>/dev/null || true
+              echo "${label}：30 秒后仍在运行"
+            else
+              set +e; wait "$pid"; local code=$?; set -e
+              cat "$logs"/*.log 2>/dev/null || true
+              echo "::error::macOS ${label} 启动后 30 秒内就退出了（退出码 ${code}），见上面的日志"
+              exit 1
+            fi
+          }
+          smoke "arm64" "$app/Contents/MacOS/can-pilot"
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            smoke "x64（Rosetta）" arch -x86_64 "$app/Contents/MacOS/can-pilot"
+          else
+            echo "::warning::这台 runner 没有 Rosetta，跳过 Intel 版启动测试"
+          fi
+          cat "$logs"/*.log 2>/dev/null || true
+
+      - name: 压包
+        run: (cd dist && ditto -c -k --keepParent "CAN Pilot.app" "${OUTPUT}-${{ needs.version.outputs.tag }}-osx-universal.zip")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: can-pilot-osx-universal
+          path: dist/*.zip
+          if-no-files-found: error
+
+  arch:
+    # Arch Linux 的 pacman 包：用上面的 linux-x64 tar.gz 和 packaging/arch/PKGBUILD 跑 makepkg。
+    # 填好版本和校验和的 PKGBUILD 一起发出去，可以直接拿去发 AUR。
+    needs: [version, build-linux]
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: can-pilot-linux-x64
+          path: tarball
+      - name: makepkg
+        env:
+          VERSION: ${{ needs.version.outputs.number }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          useradd -m builder
+          work=/home/builder/pkg
+          mkdir -p "$work" out
+          tarball="tarball/can-pilot-${TAG}-linux-x64.tar.gz"
+          # makepkg 在 PKGBUILD 旁边找到同名源文件就不下载
+          cp "$tarball" "$work/can-pilot-v${VERSION}-linux-x64.tar.gz"
+          sum=$(sha256sum "$tarball" | cut -d' ' -f1)
+          sed -e "s/^pkgver=.*/pkgver=${VERSION}/" -e "s/^sha256sums=.*/sha256sums=('${sum}')/" \
+            packaging/arch/PKGBUILD > "$work/PKGBUILD"
+          chown -R builder "$work"
+          su builder -c "cd '$work' && makepkg --nodeps --noconfirm"
+          cp "$work"/*.pkg.tar.zst "$work/PKGBUILD" out/
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: can-pilot-arch
+          path: out/*
           if-no-files-found: error
 
   release:
     # 只有推到默认分支才发。手动触发和别的分支只出产物挂在 Actions 里，方便试包而不占版本号。
     if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
-    needs: [version, test, build, build-unix]
+    needs: [version, test, build, build-linux, build-macos, arch]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -300,7 +397,7 @@ jobs:
             sha256sum "$file" \
               | awk -v name="${file#packages/}" '{print $1 "  " name}' \
               >> packages/SHA256SUMS
-          done < <(find packages -type f \( -name '*.zip' -o -name '*.tar.gz' \) -print0 | sort -z)
+          done < <(find packages -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.pkg.tar.zst' \) -print0 | sort -z)
           test -s packages/SHA256SUMS
 
       - name: 打标签
@@ -320,6 +417,8 @@ jobs:
           files: |
             packages/*.zip
             packages/*.tar.gz
+            packages/*.pkg.tar.zst
+            packages/PKGBUILD
             packages/SHA256SUMS
           generate_release_notes: true
           body: |
@@ -328,9 +427,9 @@ jobs:
             | 文件 | 平台 | 模拟器 |
             |---|---|---|
             | `can-pilot-${{ needs.version.outputs.tag }}-win-x64.zip` | Windows x64 | MSFS 2020 / 2024、X-Plane 11.50+ / 12 |
-            | `can-pilot-${{ needs.version.outputs.tag }}-osx-arm64.zip` | macOS（Apple Silicon） | X-Plane 11.50+ / 12 |
-            | `can-pilot-${{ needs.version.outputs.tag }}-osx-x64.zip` | macOS（Intel） | X-Plane 11.50+ / 12 |
-            | `can-pilot-${{ needs.version.outputs.tag }}-linux-x64.tar.gz` | Linux x64 | X-Plane 11.50+ / 12 |
+            | `can-pilot-${{ needs.version.outputs.tag }}-osx-universal.zip` | macOS 12+（Apple Silicon 和 Intel 通用） | X-Plane 11.50+ / 12 |
+            | `can-pilot-bin-${{ needs.version.outputs.number }}-1-x86_64.pkg.tar.zst` | Arch Linux（附 `PKGBUILD`） | X-Plane 11.50+ / 12 |
+            | `can-pilot-${{ needs.version.outputs.tag }}-linux-x64.tar.gz` | 其他 Linux x64 发行版 | X-Plane 11.50+ / 12 |
 
             ### Windows
 
@@ -340,15 +439,16 @@ jobs:
 
             ### macOS
 
-            解压得到 `CAN Pilot.app`，拖进"应用程序"。包没有经过 Apple 公证，第一次打开前在终端执行一次
+            解压得到 `CAN Pilot.app`（Apple Silicon 和 Intel 通用），拖进"应用程序"。包没有经过 Apple 公证，第一次打开前在终端执行一次
             `xattr -dr com.apple.quarantine "/Applications/CAN Pilot.app"`。键盘 / 鼠标侧键 PTT 需要在
             "系统设置 → 隐私与安全性 → 输入监控"里允许 CAN Pilot；麦克风权限在第一次连语音时弹出。
             设置和日志在 `~/Library/Application Support/CAN Pilot Client`。
 
             ### Linux
 
-            解压到可写目录，运行 `can-pilot/can-pilot`。键盘 / 鼠标 PTT 读取 `/dev/input`，需要把用户加入
-            `input` 组（`sudo usermod -aG input $USER` 后重新登录）。
+            Arch：`sudo pacman -U can-pilot-bin-*.pkg.tar.zst`，从应用菜单或终端 `can-pilot` 启动。
+            其他发行版：解压 tar.gz，运行 `can-pilot/can-pilot`；依赖（ICU、fontconfig、X11 库、中文字体）见 README。
+            键盘 / 鼠标 PTT 读取 `/dev/input`，需要把用户加入 `input` 组（`sudo usermod -aG input $USER` 后重新登录）。
 
             ### X-Plane 的他机插件
 

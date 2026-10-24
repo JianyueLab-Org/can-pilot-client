@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 下载 xiph RNNoise v0.2 发布包、校验、构建 librnnoise.so（Linux）/ librnnoise.dylib（macOS），输出到 OUT 目录。
 #   native/rnnoise/build.sh [OUT] [ARCH]
-# ARCH 只对 macOS 有用（arm64 / x86_64），在 Apple Silicon 上给 Intel 版构建时传 x86_64；默认本机架构。
+# ARCH 只对 macOS 有用：arm64 / x86_64 / "arm64;x86_64"（通用 dylib）；默认本机架构。
 # Windows 用同目录的 build.ps1。
 set -euo pipefail
 
@@ -26,7 +26,7 @@ if [ "$actual" != "$sha" ]; then
 fi
 tar -xzf "$tarball" -C "$work"
 
-build="$work/build${arch:+-$arch}"
+build="$work/build${arch:+-${arch//;/-}}"
 args=(-S "$here" -B "$build" -DCMAKE_BUILD_TYPE=Release "-DRNNOISE_SRC=$work/rnnoise-0.2")
 if [ "$(uname)" = Darwin ]; then
   lib=librnnoise.dylib

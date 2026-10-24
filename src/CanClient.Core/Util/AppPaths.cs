@@ -3,8 +3,8 @@ namespace CanClient.Core.Util;
 /// <summary>
 /// 文件放在哪。和 Python 版一样，设置、日志、扫描结果都跟着程序目录走——
 /// 用户把整个目录拷到别的机器上，配置一起带过去。
-/// 配置目录不可写时退到 %LOCALAPPDATA%\CAN Pilot Client（macOS 是 ~/Library/Application Support，Linux 是 ~/.local/share）；
-/// 日志使用程序目录的 logs。
+/// 程序目录不可写时（比如 Linux 包装到 /opt）退到 %LOCALAPPDATA%\CAN Pilot Client
+/// （macOS 是 ~/Library/Application Support，Linux 是 $XDG_DATA_HOME 或 ~/.local/share），日志也跟过去。
 ///
 /// macOS 的 .app 包例外：程序在 CAN Pilot.app/Contents/MacOS 里，不该往包里写东西，
 /// 设置和日志都放 ~/Library/Application Support/CAN Pilot Client，随包文件在 Contents/Resources。
@@ -25,8 +25,8 @@ public static class AppPaths
         ? Path.GetFullPath(Path.Combine(ProgramDirectory, "..", "Resources"))
         : ProgramDirectory;
 
-    /// <summary>logs 目录放在哪下面：一般是程序目录，.app 包里运行时跟着设置走。</summary>
-    public static string LogRoot => InMacAppBundle ? DataDirectory : ProgramDirectory;
+    /// <summary>logs 目录放在哪下面：和设置同一个目录（程序目录可写时就是程序目录）。</summary>
+    public static string LogRoot => DataDirectory;
 
     public static string DataDirectory => _dataDirectory ??= ChooseDataDirectory();
 

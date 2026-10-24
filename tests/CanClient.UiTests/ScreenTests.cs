@@ -115,7 +115,11 @@ public class ScreenTests(ITestOutputHelper output)
         var detected2024 = settings.ShowMsfs2024;
         var detectedXp = settings.ShowXPlane;
         settings.ShowAllSimulators = true;
-        Assert.True(settings.ShowMsfs2020 && settings.ShowMsfs2024 && settings.ShowXPlane);
+        // macOS / Linux 只有 X-Plane：显示所有模拟器也不出现 MSFS 页面
+        Assert.Equal(PlatformSupport.SupportsMsfs, settings.ShowMsfs2020 && settings.ShowMsfs2024);
+        Assert.True(settings.ShowXPlane);
+        if (!PlatformSupport.SupportsMsfs)
+            Assert.True(detectedXp);
         settings.ShowAllSimulators = false;
         Assert.Equal(detected2020, settings.ShowMsfs2020);
         Assert.Equal(detected2024, settings.ShowMsfs2024);
