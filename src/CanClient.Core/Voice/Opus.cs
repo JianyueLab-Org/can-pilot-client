@@ -1,8 +1,14 @@
 using System.Runtime.InteropServices;
+using Concentus;
+using Concentus.Enums;
 
 namespace CanClient.Core.Voice;
 
-/// <summary>opus.dll（随程序发布）的最小封装。48 kHz 单声道，20 ms 一帧。</summary>
+/// <summary>
+/// opus.dll（随 Windows 版发布）的最小封装。48 kHz 单声道，20 ms 一帧。
+/// macOS / Linux 没有随包的 opus 原生库，<see cref="OpusEncoder"/> / <see cref="OpusDecoder"/> 改用 Concentus 的托管实现，
+/// 码流和 libopus 互通。
+/// </summary>
 internal static class OpusNative
 {
     private const string Dll = "opus.dll";
@@ -37,9 +43,15 @@ internal static class OpusNative
 public sealed class OpusEncoder : IDisposable
 {
     private IntPtr _handle;
+    private readonly IOpusEncoder? _managed;
 
     public OpusEncoder(int sampleRate = 48000, int channels = 1, int application = OpusNative.ApplicationAudio)
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            _managed = OpusCodecFactory.CreateEncoder(sampleRate, channels, (OpusApplication)application, TextWriter.Null);
+            return;
+        }
         _handle = OpusNative.opus_encoder_create(sampleRate, channels, application, out var error);
         if (_handle == IntPtr.Zero || error != 0)
             throw new InvalidOperationException($"opus_encoder_create failed ({error})");
@@ -47,16 +59,29 @@ public sealed class OpusEncoder : IDisposable
 
     public int Bitrate
     {
-        set => OpusNative.opus_encoder_ctl(_handle, OpusNative.SetBitrateRequest, value);
+        set
+        {
+            if (_managed is not null)
+                _managed.Bitrate = value;
+            else
+                OpusNative.opus_encoder_ctl(_handle, OpusNative.SetBitrateRequest, value);
+        }
     }
 
     public unsafe byte[] Encode(ReadOnlySpan<short> pcm)
     {
         Span<byte> buffer = stackalloc byte[1275];
         int length;
-        fixed (short* input = pcm)
-        fixed (byte* output = buffer)
-            length = OpusNative.opus_encode(_handle, input, pcm.Length, output, buffer.Length);
+        if (_managed is not null)
+        {
+            length = _managed.Encode(pcm, pcm.Length, buffer, buffer.Length);
+        }
+        else
+        {
+            fixed (short* input = pcm)
+            fixed (byte* output = buffer)
+                length = OpusNative.opus_encode(_handle, input, pcm.Length, output, buffer.Length);
+        }
         if (length < 0)
             throw new InvalidOperationException($"opus_encode failed ({length})");
         return buffer[..length].ToArray();
@@ -64,6 +89,7 @@ public sealed class OpusEncoder : IDisposable
 
     public void Dispose()
     {
+        (_managed as IDisposable)?.Dispose();
         if (_handle != IntPtr.Zero)
         {
             OpusNative.opus_encoder_destroy(_handle);
@@ -78,9 +104,15 @@ public sealed class OpusDecoder : IDisposable
     public const int MaxFrameSamples = 48000 * 120 / 1000;
 
     private IntPtr _handle;
+    private readonly IOpusDecoder? _managed;
 
     public OpusDecoder(int sampleRate = 48000, int channels = 1)
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            _managed = OpusCodecFactory.CreateDecoder(sampleRate, channels, TextWriter.Null);
+            return;
+        }
         _handle = OpusNative.opus_decoder_create(sampleRate, channels, out var error);
         if (_handle == IntPtr.Zero || error != 0)
             throw new InvalidOperationException($"opus_decoder_create failed ({error})");
@@ -89,6 +121,18 @@ public sealed class OpusDecoder : IDisposable
     /// <summary>解一个包，返回采样数。data 为空表示丢包补偿。</summary>
     public unsafe int Decode(ReadOnlySpan<byte> data, Span<short> pcm)
     {
+        if (_managed is not null)
+        {
+            try
+            {
+                return Math.Max(0, _managed.Decode(data, pcm, pcm.Length, false));
+            }
+            catch (Exception e) when (e is OpusException or ArgumentException or IndexOutOfRangeException)
+            {
+                // 坏包：和原生库返回负数一样当没解出来
+                return 0;
+            }
+        }
         fixed (byte* input = data)
         fixed (short* output = pcm)
         {
@@ -99,6 +143,7 @@ public sealed class OpusDecoder : IDisposable
 
     public void Dispose()
     {
+        (_managed as IDisposable)?.Dispose();
         if (_handle != IntPtr.Zero)
         {
             OpusNative.opus_decoder_destroy(_handle);

@@ -1,6 +1,7 @@
 # CAN Pilot Client
 
 CAN 连飞网络的统一飞行员客户端，支持 Microsoft Flight Simulator（2020 / 2024）与 X-Plane（11.50+ / 12），C# / .NET 10 实现。
+同一套代码发布 Windows、macOS、Linux 三个平台：Windows 版同时支持 MSFS 和 X-Plane；macOS（Apple Silicon / Intel）和 Linux x64 版只接 X-Plane（MSFS 依赖 Windows 上的 SimConnect），FSD、语音、PTT、消息和设置在三个平台上一致。
 已整合 [can-xplane-client](https://github.com/JianyueLab-Org/can-xplane-client) 的模拟器接入和原生交通插件协议，两种模拟器共用同一个 EXE、FSD、C# 语音引擎、消息和设置，不需要 Python 语音进程。
 界面基于 [can-client-ui](https://github.com/JianyueLab-Org/can-client-ui)（Avalonia，布局参考 vPilot），
 他机模型匹配按 vPilot 的做法实现。
@@ -10,26 +11,43 @@ CAN 连飞网络的统一飞行员客户端，支持 Microsoft Flight Simulator�
 
 ## 环境
 
-- Windows x64，[.NET 10 SDK](https://dotnet.microsoft.com/download)。
-- 实际联飞需要启动 MSFS 或 X-Plane，准备 CAN 账号，并能访问所选语音 / FSD 服务器。
-- 可选：CMake + Visual Studio 2022 Build Tools（C++ 桌面开发），用于构建 RNNoise 麦克风降噪。
+- Windows x64、macOS 12+（arm64 / x64）或 Linux x64，[.NET 10 SDK](https://dotnet.microsoft.com/download)。
+- 实际联飞需要启动 MSFS（仅 Windows）或 X-Plane，准备 CAN 账号，并能访问所选语音 / FSD 服务器。
+- 可选：RNNoise 麦克风降噪。Windows 需要 CMake + Visual Studio 2022 Build Tools（C++ 桌面开发）；macOS / Linux 需要 CMake 和 C 编译器（Xcode 命令行工具 / gcc）。
 
 ## 运行与构建
 
 ```powershell
 dotnet run --project src/CanClient          # 从源码运行；加 -- --debug 记录调试日志
 dotnet test CanMfsClient.slnx               # 单元测试 + 界面渲染测试
-pwsh -File build.ps1                        # 构建 RNNoise、准备 X-Plane 插件、跑测试、发布到 dist/can-pilot
+pwsh -File build.ps1                        # Windows：构建 RNNoise、准备 X-Plane 插件、跑测试、发布到 dist/can-pilot
+```
+
+```bash
+./build.sh                                  # macOS / Linux：构建 RNNoise、跑测试、发布；--skip-rnnoise / --skip-tests / --rid osx-x64
 ```
 
 构建脚本采用 .NET 10 Windows x64 自包含单文件发布，无需安装 .NET；托管依赖和原生 DLL 打进 EXE，
 原生库在运行时自动解压到 .NET 缓存。分发整个 `dist/can-pilot/`（EXE、MSFS 模型库、X-Plane 插件压缩包、许可证及来源说明），入口为 `can-pilot.exe`。版本系列 `3.0` 写在 `Directory.Build.props`；
 也可在构建前设置 `$env:CAN_VERSION` 覆盖，程序标题和版本检查与发布包保持一致。
 
+macOS / Linux 同样是自包含单文件发布。macOS 输出 `dist/CAN Pilot.app`（`tools/make-macos-app.sh` 生成 Info.plist、图标并做 ad-hoc 签名）；Linux 输出 `dist/can-pilot/`，入口为 `can-pilot`。
+
+### macOS / Linux（只支持 X-Plane）
+
+- **模拟器**：只接 X-Plane，设置里不显示 MSFS 页面和接入模式选择；从 Windows 拷来的配置照常读取，接入模式不会被改写。X-Plane 安装位置按各平台安装器的记录自动查找（macOS `~/Library/Preferences`，Linux `~/.x-plane`）。
+- **音频**：通过随包的 OpenAL Soft 访问声卡（Linux 下走 PipeWire / PulseAudio / ALSA，macOS 下走 CoreAudio），Opus 编解码用托管实现 Concentus，和 Windows 版的 `opus.dll` 码流互通。RNNoise 由 `native/rnnoise/build.sh` 构建成 `librnnoise.so` / `librnnoise.dylib`，缺了只是没有降噪。
+- **PTT**：键盘、鼠标侧键、摇杆都支持，绑定仍按 Windows 虚拟键码存，配置跨平台通用。
+  - macOS：键盘 / 鼠标侧键用 CoreGraphics 读取，需要在“系统设置 → 隐私与安全性 → 输入监控”允许 CAN Pilot（首次使用时会请求，授权后重启客户端）；摇杆走 IOKit HID，无需额外权限。
+  - Linux：直接读 evdev（`/dev/input/event*`），X11 和 Wayland 下都全局有效。键盘和鼠标节点一般只有 `input` 组可读，需执行 `sudo usermod -aG input $USER` 后重新登录；读不到时日志里会提示。
+- **文件位置**：Linux 与 Windows 一样，设置和 `logs/` 放在程序目录（不可写时退到 `~/.local/share/CAN Pilot Client`）。macOS 的 `.app` 包里不写文件，设置和日志在 `~/Library/Application Support/CAN Pilot Client`。
+- **macOS 首次打开**：发布包未经 Apple 公证，解压后执行一次 `xattr -dr com.apple.quarantine "/Applications/CAN Pilot.app"`；麦克风权限在第一次连语音时弹出。
+- **X-Plane 交通插件**：固定的 `v0.0.1` 插件发布包只有 Windows 版 `64/win.xpl`。macOS / Linux 需要从 can-xplane-client 的 `native_plugin` 构建 `mac.xpl` / `lin.xpl` 后加入插件包（见下文“X-Plane 接入”）；在此之前这两个平台可以正常联飞、语音、收发消息，但看不到他机，安装插件时会提示插件包缺少本平台版本。
+
 ### 自动发布
 
-`.github/workflows/release.yml` 在推到默认分支时跑测试、编译 RNNoise、
-发布 `can-pilot-v3.0.x-win-x64.zip`，再打标签并建 GitHub Release（附 `SHA256SUMS`）。
+`.github/workflows/release.yml` 在推到默认分支时在 Windows / macOS / Linux 上跑测试、编译各平台 RNNoise、
+发布 `can-pilot-v3.0.x-win-x64.zip`、`-osx-arm64.zip`、`-osx-x64.zip`、`-linux-x64.tar.gz`，再打标签并建 GitHub Release（附 `SHA256SUMS`）。
 补丁号由已有的 `v3.0.*` 标签加一得出，第一次是 `v3.0.0`；想换到 3.1 就把
 `Directory.Build.props` 和工作流里的 `SERIES` 一起改。手动触发或推到其他分支只在
 Actions 里留产物，不发版、不占版本号。
@@ -97,6 +115,12 @@ X-Plane 自带 UDP RREF/DREF 提供本机状态和控制；本机原生 `XPC_for
 python tools/package-xplane-plugin.py --source "路径/xpc-for-can-0.0.1-win-x64.zip"
 ```
 
+macOS / Linux 版插件从同一份 `native_plugin` 源码构建，再加入已提交的插件包（不重新下载）：
+
+```bash
+python tools/package-xplane-plugin.py --add-only --mac-xpl 路径/mac.xpl --lin-xpl 路径/lin.xpl
+```
+
 ## 模拟器设置显示与版本区分
 
 - 设置侧栏将 **MSFS 2020、MSFS 2024、X-Plane** 挨在一起排列。MSFS 两个版本分别切换各自的包目录、扫描结果和模型规则。
@@ -146,5 +170,5 @@ python tools/package-xplane-plugin.py --source "路径/xpc-for-can-0.0.1-win-x64
 | `src/CanClient/` | Avalonia 界面（主题令牌在 `Styles/Theme/Tokens.axaml`） |
 | `tests/CanClient.Tests/` | 单元测试（协议、加密、高度、模型扫描与匹配；有 MSFS 时另扫一遍真实安装） |
 | `tests/CanClient.UiTests/` | 无头渲染各窗口和设置页，截图在 `bin/.../screens` |
-| `native/` | `SimConnect.dll`、`opus.dll`，以及 RNNoise 构建脚本 |
+| `native/` | Windows 的 `SimConnect.dll`、`opus.dll`，以及 RNNoise 构建脚本（`build.ps1` / `build.sh`） |
 | `data/ModelMatchingData.bin` | vPilot 的模型匹配数据 |

@@ -42,7 +42,7 @@
           <ListBoxItem Content="字体" Tag="Fonts" />
           <ListBoxItem Content="音频" Tag="Audio" />
           <ListBoxItem Content="按键通话 (PTT)" Tag="Ptt" />
-          <ListBoxItem Content="模拟器" Tag="SimulatorGeneral" />
+          <ListBoxItem Content="模拟器" Tag="SimulatorGeneral" IsVisible="{Binding SupportsMsfs}" />
           <ListBoxItem Content="MSFS 2020" Tag="Msfs2020" IsVisible="{Binding ShowMsfs2020}" />
           <ListBoxItem Content="MSFS 2024" Tag="Msfs2024" IsVisible="{Binding ShowMsfs2024}" />
           <ListBoxItem Content="X-Plane" Tag="Simulator" IsVisible="{Binding ShowXPlane}" />

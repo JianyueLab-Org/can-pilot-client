@@ -7,9 +7,23 @@ namespace CanClient.Core.Sim;
 public static class XPlaneInstallation
 {
     public static bool IsXPlane(string path) => !string.IsNullOrWhiteSpace(path) && Directory.Exists(Path.Combine(path, "Resources", "plugins"));
+    /// <summary>
+    /// X-Plane 安装器记录安装位置的目录：Windows 在 %LOCALAPPDATA%，macOS 在 ~/Library/Preferences，Linux 在 ~/.x-plane。
+    /// </summary>
+    private static string InstallRecordDirectory
+    {
+        get
+        {
+            if (OperatingSystem.IsWindows())
+                return Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return OperatingSystem.IsMacOS() ? Path.Combine(home, "Library", "Preferences") : Path.Combine(home, ".x-plane");
+        }
+    }
+
     public static string[] FindInstalls()
     {
-        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var local = InstallRecordDirectory;
         var result = new List<string>();
         foreach (var name in new[] { "x-plane_install_12.txt", "x-plane_install_11.txt" })
         {
@@ -55,12 +69,15 @@ public static class XPlaneInstallation
         catch (UnauthorizedAccessException) { }
         return result.Distinct(StringComparer.Ordinal).ToArray();
     }
-    public static string PluginArchive => Path.Combine(AppPaths.ProgramDirectory, "XPC_for_CAN-plugin.zip");
+    public static string PluginArchive => Path.Combine(AppPaths.ResourceDirectory, "XPC_for_CAN-plugin.zip");
     public static void InstallPlugin(string xplane)
     {
         if (!IsXPlane(xplane)) throw new IOException("请选择包含 Resources/plugins 的 X-Plane 根目录。");
         using var zip = ZipFile.OpenRead(PluginArchive);
-        var required = new[] { "XPC_for_CAN/64/win.xpl", "XPC_for_CAN/LegacyData/Doc8643.txt", "XPC_for_CAN/LegacyData/related.txt" };
+        var binary = $"XPC_for_CAN/64/{PlatformSupport.XPlanePluginBinary}";
+        if (zip.GetEntry(binary) is null)
+            throw new InvalidDataException($"插件包里没有 {PlatformSupport.Name} 版插件（{binary}），请换用包含该平台插件的发布包。");
+        var required = new[] { "XPC_for_CAN/LegacyData/Doc8643.txt", "XPC_for_CAN/LegacyData/related.txt" };
         if (required.Any(p => zip.GetEntry(p) is null)) throw new InvalidDataException("原生插件包不完整。");
         var target = Path.GetFullPath(Path.Combine(xplane, "Resources", "plugins")) + Path.DirectorySeparatorChar;
         foreach (var entry in zip.Entries)

@@ -221,6 +221,9 @@ public partial class MainWindow : Window
 
     private void Flash()
     {
+        // 任务栏闪烁是 Windows 的做法；macOS / Linux 不闪
+        if (!OperatingSystem.IsWindows())
+            return;
         if (IsActive || TryGetPlatformHandle()?.Handle is not { } hwnd || hwnd == IntPtr.Zero)
             return;
         const uint flashTray = 0x2, flashUntilForeground = 0xC;

@@ -54,7 +54,7 @@ public static class ModelScanner
                 folder.Subfolders.Add(new ModelScanResultSubfolder
                 {
                     FullPath = info.DirectoryName ?? "",
-                    RelativePath = Path.GetDirectoryName(config.VirtualPath) ?? config.VirtualPath,
+                    RelativePath = AircraftConfigParser.VirtualDirectory(config.VirtualPath),
                     ConfigFilePath = config.FullPath,
                     ConfigFileSize = info.Length,
                     ConfigFileModificationTime = info.LastWriteTime
@@ -77,7 +77,7 @@ public static class ModelScanner
                 {
                     subfolder.ConfigFileHash = Md5(subfolder.ConfigFilePath);
                     var models = AircraftConfigParser.ReadModels(subfolder.ConfigFilePath,
-                        Path.Combine(subfolder.RelativePath, Path.GetFileName(subfolder.ConfigFilePath)),
+                        $"{subfolder.RelativePath}\\{Path.GetFileName(subfolder.ConfigFilePath)}",
                         byVirtualPath);
                     foreach (var model in models)
                     {

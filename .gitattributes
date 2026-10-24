@@ -1,0 +1,2 @@
+# macOS / Linux 的构建脚本必须是 LF，否则 bash 认不出 \r
+*.sh text eol=lf

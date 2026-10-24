@@ -8,6 +8,7 @@ using CanClient.Core.Net;
 using CanClient.Core.Ptt;
 using CanClient.Core.Settings;
 using CanClient.Core.Sim;
+using CanClient.Core.Util;
 using CanClient.Core.Voice;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -98,7 +99,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         VoiceHost = _settings.MumbleHostName;
         VoicePort = _settings.MumblePortNumber;
         SetServerChoices(null);
-        SimulatorConnection = _settings.SimulatorConnection;
+        SimulatorConnection = PlatformSupport.EffectiveSimulatorConnection(_settings.SimulatorConnection);
         ShowAllSimulators = _settings.ShowAllSimulators;
         XPlanePath = _settings.XPlanePath;
         CslPath = _settings.CslPath;
@@ -220,7 +221,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         _settings.FsdPortNumber = FsdPort;
         _settings.MumbleHostName = VoiceHost.Trim();
         _settings.MumblePortNumber = VoicePort;
-        if (!_controller.IsConnected) _settings.SimulatorConnection = SimulatorConnection;
+        // macOS / Linux 只有 X-Plane，不改写配置里的接入模式，配置拷回 Windows 还是原样
+        if (!_controller.IsConnected && SupportsMsfs) _settings.SimulatorConnection = SimulatorConnection;
         _settings.ShowAllSimulators = ShowAllSimulators;
         _settings.XPlanePath = XPlanePath.Trim();
         _settings.CslPath = CslPath.Trim();
@@ -285,7 +287,9 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     }
 
     // —— 网络 ——
-    public IReadOnlyList<string> SimulatorConnections { get; } = ["Auto", "MSFS", "XPlane"];
+    public IReadOnlyList<string> SimulatorConnections { get; } = PlatformSupport.SupportsMsfs ? ["Auto", "MSFS", "XPlane"] : ["XPlane"];
+    /// <summary>MSFS 相关的页面和选项只在 Windows 上显示；macOS / Linux 只有 X-Plane。</summary>
+    public bool SupportsMsfs => PlatformSupport.SupportsMsfs;
     [ObservableProperty] private bool _showAllSimulators;
     [ObservableProperty] private bool _showMsfs2020;
     [ObservableProperty] private bool _showMsfs2024;
@@ -295,7 +299,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     partial void OnShowAllSimulatorsChanged(bool value) => UpdateSimulatorVisibility();
     private void RefreshSimulatorVisibility()
     {
-        var installed = MsfsInstallation.InstalledSimulators().ToArray();
+        var installed = SupportsMsfs ? MsfsInstallation.InstalledSimulators().ToArray() : [];
         _msfs2020Installed = installed.Contains(SimulatorType.Msfs) || _controller.Sim.Simulator == SimulatorType.Msfs;
         _msfs2024Installed = installed.Contains(SimulatorType.Msfs2024) || _controller.Sim.Simulator == SimulatorType.Msfs2024;
         _xplaneInstalled = XPlaneInstallation.IsXPlane(XPlanePath) || XPlaneInstallation.FindInstalls().Length > 0 || _controller.Sim.Simulator == SimulatorType.XPlane;
@@ -303,9 +307,10 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     }
     private void UpdateSimulatorVisibility()
     {
-        ShowMsfs2020 = ShowAllSimulators || _msfs2020Installed;
-        ShowMsfs2024 = ShowAllSimulators || _msfs2024Installed;
-        ShowXPlane = ShowAllSimulators || _xplaneInstalled;
+        ShowMsfs2020 = SupportsMsfs && (ShowAllSimulators || _msfs2020Installed);
+        ShowMsfs2024 = SupportsMsfs && (ShowAllSimulators || _msfs2024Installed);
+        // X-Plane 是 macOS / Linux 唯一的模拟器，页面总是显示
+        ShowXPlane = !SupportsMsfs || ShowAllSimulators || _xplaneInstalled;
         ShowMsfs = ShowMsfs2020 || ShowMsfs2024;
     }
     public async Task SelectMsfsSettingsAsync(SimulatorType simulator)

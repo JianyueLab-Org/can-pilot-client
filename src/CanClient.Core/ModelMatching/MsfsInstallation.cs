@@ -208,7 +208,7 @@ public sealed class MsfsInstallation
             {
                 foreach (var virtualPath in ReadLayout(layout))
                 {
-                    var full = Path.Combine(packageDir, virtualPath);
+                    var full = Path.Combine(packageDir, virtualPath.Replace('\\', Path.DirectorySeparatorChar));
                     if (!File.Exists(full))
                     {
                         Log.Debug($"File does not exist or path is too long: {full}");

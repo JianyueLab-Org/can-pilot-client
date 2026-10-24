@@ -13,6 +13,9 @@
     <PackageReference Include="Google.Protobuf" Version="3.31.1" />
     <PackageReference Include="Grpc.Tools" Version="2.72.0" PrivateAssets="all" />
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- macOS / Linux：Opus 用托管实现（Windows 仍用随包的 opus.dll），音频走 OpenAL Soft。 -->
+    <PackageReference Include="Concentus" Version="2.2.2" />
+    <PackageReference Include="Silk.NET.OpenAL.Soft.Native" Version="1.23.1" Condition="'$(CanTargetsWindows)' != 'true'" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,11 +27,18 @@
     <InternalsVisibleTo Include="CanClient.Tests" />
   </ItemGroup>
 
-  <!-- 原生库和模型匹配数据随输出目录一起走，打包时保留整个目录。 -->
-  <ItemGroup>
+  <!-- 原生库和模型匹配数据随输出目录一起走，打包时保留整个目录。SimConnect / opus.dll 只有 Windows 版要。 -->
+  <ItemGroup Condition="'$(CanTargetsWindows)' == 'true'">
     <None Include="..\..\native\SimConnect.dll" Link="SimConnect.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\native\opus.dll" Link="opus.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\rnnoise.dll" Link="rnnoise.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\rnnoise.dll')" />
+  </ItemGroup>
+  <!-- macOS / Linux 的 RNNoise 由 native/rnnoise/build.sh 构建到仓库根目录，没有就不降噪。 -->
+  <ItemGroup Condition="'$(CanTargetsWindows)' != 'true'">
+    <None Include="..\..\librnnoise.so" Link="librnnoise.so" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\librnnoise.so')" />
+    <None Include="..\..\librnnoise.dylib" Link="librnnoise.dylib" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\librnnoise.dylib')" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="..\..\RNNOISE-COPYING" Link="RNNOISE-COPYING" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\RNNOISE-COPYING')" />
     <None Include="..\..\data\ModelMatchingData.bin" Link="ModelMatchingData.bin" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\native\XPC_for_CAN-plugin.zip" Link="XPC_for_CAN-plugin.zip" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\native\XPC_for_CAN-plugin.zip')" />

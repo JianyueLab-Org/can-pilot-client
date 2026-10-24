@@ -17,3 +17,6 @@ native/rnnoise/work/
 native/rnnoise/out/
 rnnoise.dll
 RNNOISE-COPYING
+librnnoise.so
+librnnoise.dylib
+native/rnnoise/out-*/

@@ -127,7 +127,7 @@ public static class AircraftConfigParser
         {
             if (string.IsNullOrEmpty(virtualPath) || configsByVirtualPath is null)
                 return list;
-            var baseVirtual = ResolveVirtualPath(Path.GetDirectoryName(virtualPath) ?? "", baseContainer,
+            var baseVirtual = ResolveVirtualPath(VirtualDirectory(virtualPath), baseContainer,
                 Path.GetFileName(configPath));
             if (!configsByVirtualPath.TryGetValue(baseVirtual, out var baseConfig))
                 return list;
@@ -194,11 +194,30 @@ public static class AircraftConfigParser
 
     /// <summary>
     /// 把相对路径拼到虚拟目录上再规范化：SimObjects\Airplanes\A_ANA + ..\A → SimObjects\Airplanes\A\aircraft.cfg。
-    /// 和 vPilot 一样借一个假盘符让 GetFullPath 去处理 ..。
+    /// 虚拟路径固定用反斜杠，自己按段处理 . 和 ..，不依赖本机的路径规则（macOS / Linux 上一样跑得通）。
     /// </summary>
     public static string ResolveVirtualPath(string virtualDirectory, string relative, string fileName)
     {
-        var full = Path.GetFullPath(Path.Combine("V:\\", virtualDirectory, relative.Replace('/', '\\'), fileName));
-        return full.Length > 3 ? full[3..] : full;
+        var parts = new List<string>();
+        foreach (var segment in $"{virtualDirectory}\\{relative}\\{fileName}".Split('\\', '/'))
+        {
+            if (segment.Length == 0 || segment == ".")
+                continue;
+            if (segment == "..")
+            {
+                if (parts.Count > 0)
+                    parts.RemoveAt(parts.Count - 1);
+                continue;
+            }
+            parts.Add(segment);
+        }
+        return string.Join('\\', parts);
+    }
+
+    /// <summary>虚拟路径的上一级目录（反斜杠分隔，和本机路径规则无关）。</summary>
+    public static string VirtualDirectory(string virtualPath)
+    {
+        var slash = virtualPath.LastIndexOfAny(['\\', '/']);
+        return slash < 0 ? "" : virtualPath[..slash];
     }
 }

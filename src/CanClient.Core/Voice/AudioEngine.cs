@@ -6,7 +6,9 @@ namespace CanClient.Core.Voice;
 /// <summary>
 /// 麦克风和扬声器。48 kHz 单声道 16 位，20 ms 一帧（960 个采样），和 Mumble 的 Opus 帧对齐。
 ///
-/// 采集：WaveIn 的回调凑够 960 个采样就交出一帧（<see cref="FrameCaptured"/>），语音发送和设置页的
+/// Windows 用 WinMM（WaveIn / WaveOut），macOS / Linux 用 OpenAL Soft（<see cref="OpenAlCapture"/> / <see cref="OpenAlPlayback"/>）。
+///
+/// 采集：设备回调凑够 960 个采样就交出一帧（<see cref="FrameCaptured"/>），语音发送和设置页的
 /// 电平表都从这里拿。播放：每个说话的人一条队列，由输出设备按它要的采样数拉着混（<see cref="RxMixer"/>）；
 /// 提示音也混在同一路里，所以响在客户端选的那块输出设备上，而不是系统默认设备。
 ///
@@ -21,8 +23,9 @@ public sealed class AudioEngine : IDisposable
     private static readonly WaveFormat PcmFormat = new(SampleRate, 16, 1);
 
     private readonly object _lock = new();
-    private WaveInEvent? _input;
-    private WaveOutEvent? _output;
+    // Windows 上是 WaveInEvent / WaveOutEvent，其他平台是 OpenAlCapture / OpenAlPlayback
+    private IDisposable? _input;
+    private IDisposable? _output;
     private readonly RxMixer _mixer = new();
     private readonly short[] _pending = new short[FrameSamples];
     private int _pendingCount;
@@ -100,6 +103,21 @@ public sealed class AudioEngine : IDisposable
     {
         CloseInput();
         _inputName = deviceName;
+        if (!OperatingSystem.IsWindows())
+        {
+            var device = AudioDevices.ResolveInputDevice(deviceName);
+            try
+            {
+                _input = new OpenAlCapture(device?.Name, OnPcm);
+            }
+            catch (Exception e) when (e is InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
+            {
+                throw new InvalidOperationException($"打不开麦克风：{e.Message}", e);
+            }
+            _pendingCount = 0;
+            Log.Info($"microphone open: {device?.Name ?? "[系统默认]"} ({SampleRate} Hz, OpenAL)");
+            return;
+        }
         var index = AudioDevices.ResolveInput(deviceName);
         var input = new WaveInEvent
         {
@@ -134,24 +152,29 @@ public sealed class AudioEngine : IDisposable
         _input = null;
         if (input is null)
             return;
-        input.DataAvailable -= OnData;
-        try
+        if (input is WaveInEvent waveIn)
         {
-            input.StopRecording();
-        }
-        catch
-        {
-            // ignore
+            waveIn.DataAvailable -= OnData;
+            try
+            {
+                waveIn.StopRecording();
+            }
+            catch
+            {
+                // ignore
+            }
         }
         input.Dispose();
     }
 
-    private void OnData(object? sender, WaveInEventArgs e)
+    private void OnData(object? sender, WaveInEventArgs e) => OnPcm(e.Buffer, e.BytesRecorded);
+
+    private void OnPcm(byte[] buffer, int bytes)
     {
-        var count = e.BytesRecorded / 2;
+        var count = bytes / 2;
         for (var i = 0; i < count; i++)
         {
-            _pending[_pendingCount++] = BitConverter.ToInt16(e.Buffer, i * 2);
+            _pending[_pendingCount++] = BitConverter.ToInt16(buffer, i * 2);
             if (_pendingCount == FrameSamples)
             {
                 var frame = (short[])_pending.Clone();
@@ -202,8 +225,22 @@ public sealed class AudioEngine : IDisposable
     {
         CloseOutput();
         _outputName = deviceName;
-        var index = AudioDevices.ResolveOutput(deviceName);
         _mixer.Clear();
+        if (!OperatingSystem.IsWindows())
+        {
+            var device = AudioDevices.ResolveOutputDevice(deviceName);
+            try
+            {
+                _output = new OpenAlPlayback(device?.Name, _mixer);
+            }
+            catch (Exception e) when (e is InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
+            {
+                throw new InvalidOperationException($"打不开扬声器：{e.Message}", e);
+            }
+            Log.Info($"speaker open: {device?.Name ?? "[系统默认]"} (OpenAL)");
+            return;
+        }
+        var index = AudioDevices.ResolveOutput(deviceName);
         var output = new WaveOutEvent { DeviceNumber = index, DesiredLatency = 120, NumberOfBuffers = 3 };
         try
         {
@@ -228,7 +265,7 @@ public sealed class AudioEngine : IDisposable
             return;
         try
         {
-            output.Stop();
+            (output as WaveOutEvent)?.Stop();
         }
         catch
         {
