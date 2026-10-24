@@ -4,9 +4,10 @@
              x:Class="CanClient.Views.Settings.SimulatorPage"
              x:DataType="vm:SettingsViewModel">
   <StackPanel Spacing="8">
-    <TextBlock Classes="label" Text="模拟器接入" />
-    <ComboBox ItemsSource="{Binding SimulatorConnections}" SelectedItem="{Binding SimulatorConnection}" IsEnabled="{Binding CanChangeSimulator}" />
-    <TextBlock Classes="caption" Text="Auto：自动检测 MSFS / X-Plane，优先保持已接入的模拟器；联飞时锁定，断开网络后才能切换。" TextWrapping="Wrap" />
+    <TextBlock Classes="label" Text="模拟器接入" IsVisible="{Binding SupportsMsfs}" />
+    <ComboBox ItemsSource="{Binding SimulatorConnections}" SelectedItem="{Binding SimulatorConnection}" IsEnabled="{Binding CanChangeSimulator}" IsVisible="{Binding SupportsMsfs}" />
+    <TextBlock Classes="caption" Text="Auto：自动检测 MSFS / X-Plane，优先保持已接入的模拟器；联飞时锁定，断开网络后才能切换。" TextWrapping="Wrap" IsVisible="{Binding SupportsMsfs}" />
+    <TextBlock Classes="caption" Text="macOS / Linux 版只接入 X-Plane（MSFS 需要 Windows 上的 SimConnect）。" TextWrapping="Wrap" IsVisible="{Binding !SupportsMsfs}" />
     <TextBlock Classes="section" Text="X-Plane 11 / 12" Margin="0,10,0,0" />
     <TextBlock Classes="label" Text="X-Plane 安装目录" />
     <TextBox Text="{Binding XPlanePath}" PlaceholderText="包含 Resources/plugins 的根目录" />

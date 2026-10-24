@@ -11,7 +11,7 @@ internal static class Program
     public static void Main(string[] args)
     {
         Debug = args.Contains("--debug", StringComparer.OrdinalIgnoreCase);
-        Log.Setup(AppPaths.ProgramDirectory, Debug);
+        Log.Setup(AppPaths.LogRoot, Debug);
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);

@@ -21,6 +21,10 @@ add_library(rnnoise SHARED
   ${RNNOISE_SRC}/src/nnet_default.c
 )
 target_include_directories(rnnoise PRIVATE ${RNNOISE_SRC}/include ${RNNOISE_SRC}/src)
+# Linux 上数学函数在 libm 里，动态库自己声明依赖，不指望宿主进程碰巧已经加载
+if(UNIX AND NOT APPLE)
+  target_link_libraries(rnnoise PRIVATE m)
+endif()
 if(MSVC)
   target_compile_definitions(rnnoise PRIVATE DLL_EXPORT RNNOISE_BUILD)
   # vec.h 在没有 __SSE2__/__AVX__ 时走通用路径，那条路径用了 C99 的

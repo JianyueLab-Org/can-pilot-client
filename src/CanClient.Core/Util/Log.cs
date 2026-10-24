@@ -127,7 +127,10 @@ public static class Log
             return;
         try
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{_path}\"") { UseShellExecute = true });
+            var start = OperatingSystem.IsWindows() ? new ProcessStartInfo("explorer.exe", $"/select,\"{_path}\"") { UseShellExecute = true }
+                : OperatingSystem.IsMacOS() ? new ProcessStartInfo("open", ["-R", _path])
+                : new ProcessStartInfo("xdg-open", [Path.GetDirectoryName(_path)!]);
+            Process.Start(start);
         }
         catch (Exception e)
         {

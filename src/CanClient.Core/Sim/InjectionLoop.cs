@@ -99,8 +99,10 @@ public sealed class InjectionLoop
 
     private void Run()
     {
-        // 定时器模式下 33 ms 的周期要准，Windows 默认 15.6 ms 的粒度会抖成 31/47
-        timeBeginPeriod(1);
+        // 定时器模式下 33 ms 的周期要准，Windows 默认 15.6 ms 的粒度会抖成 31/47（其他平台本来就是毫秒级）
+        var windows = OperatingSystem.IsWindows();
+        if (windows)
+            timeBeginPeriod(1);
         try
         {
             var deadline = _clock.Elapsed.TotalSeconds;
@@ -141,7 +143,8 @@ public sealed class InjectionLoop
         }
         finally
         {
-            timeEndPeriod(1);
+            if (windows)
+                timeEndPeriod(1);
         }
     }
 }

@@ -183,9 +183,25 @@ public static class KeyNames
         return $"vk{vk}";
     }
 
+    /// <summary>macOS / Linux 键盘上这几个键的叫法和 Windows 不一样。</summary>
+    private static string? PlatformDisplayName(int vk)
+    {
+        if (OperatingSystem.IsMacOS())
+            return vk switch
+            {
+                0x5B => "左 Command", 0x5C => "右 Command", 0xA4 => "左 Option", 0xA5 => "右 Option",
+                0xA2 => "左 Control", 0xA3 => "右 Control", 0x2D => "Help", 0x90 => "Clear", _ => null
+            };
+        if (OperatingSystem.IsLinux())
+            return vk switch { 0x5B => "左 Super", 0x5C => "右 Super", _ => null };
+        return null;
+    }
+
     /// <summary>界面上显示的键名。</summary>
     public static string DisplayName(int vk)
     {
+        if (PlatformDisplayName(vk) is { } platform)
+            return platform;
         if (DisplayNames.TryGetValue(vk, out var name))
             return name;
         if (vk is >= 0x70 and <= 0x87)

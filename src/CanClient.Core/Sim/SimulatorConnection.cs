@@ -1,9 +1,13 @@
 using CanClient.Core.ModelMatching;
 using CanClient.Core.Settings;
+using CanClient.Core.Util;
 
 namespace CanClient.Core.Sim;
 
-/// <summary>统一模拟器入口。自动模式锁定先连上的模拟器，联飞中不切换到另一台模拟器。</summary>
+/// <summary>
+/// 统一模拟器入口。自动模式锁定先连上的模拟器，联飞中不切换到另一台模拟器。
+/// macOS / Linux 没有 SimConnect，不管设置写的是什么都只接 X-Plane（<see cref="PlatformSupport.EffectiveSimulatorConnection"/>）。
+/// </summary>
 public sealed class SimulatorConnection : IDisposable
 {
     private readonly AppSettings _settings;
@@ -59,7 +63,7 @@ public sealed class SimulatorConnection : IDisposable
 
     private void ApplySelection()
     {
-        _selection = _settings.SimulatorConnection;
+        _selection = PlatformSupport.EffectiveSimulatorConnection(_settings.SimulatorConnection);
         // 设置页的安装检测只决定导航显示，不影响等待模拟器启动和掉线重连。
         if (_selection != "XPlane") Msfs.Start();
         if (_selection != "MSFS") XPlane.Start();
@@ -70,7 +74,7 @@ public sealed class SimulatorConnection : IDisposable
         lock (_gate)
         {
             if (!_started) return;
-            if (!LockSelection && _selection != _settings.SimulatorConnection)
+            if (!LockSelection && _selection != PlatformSupport.EffectiveSimulatorConnection(_settings.SimulatorConnection))
             {
                 ApplySelection();
                 _active = SimulatorType.None;
@@ -99,7 +103,7 @@ public sealed class SimulatorConnection : IDisposable
             if (connected != _connected || previous != _active)
             {
                 _connected = connected;
-                StateChanged?.Invoke(connected, connected ? $"已连接 {ApplicationName}" : "等待 MSFS / X-Plane 进入飞行");
+                StateChanged?.Invoke(connected, connected ? $"已连接 {ApplicationName}" : PlatformSupport.SupportsMsfs ? "等待 MSFS / X-Plane 进入飞行" : "等待 X-Plane 进入飞行");
             }
         }
     }

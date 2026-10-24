@@ -174,7 +174,7 @@ public sealed class ClientController : IDisposable
             return "请先在“设置 → 网络”里填写 CID 和密码。";
         // 没有模拟器位置时不能登录 FSD：否则服务端保留一条没有有效位置的连接
         if (!observer && !Sim.Connected)
-            return "还没有连上 MSFS / X-Plane，或者还没进入飞行。观察员模式可以不开模拟器。";
+            return $"还没有连上 {(PlatformSupport.SupportsMsfs ? "MSFS / X-Plane" : "X-Plane")}，或者还没进入飞行。观察员模式可以不开模拟器。";
         if (!observer && Sim.NeedsSelection)
             return "检测到两个模拟器，请先在主页出现的模拟器选择框中选择本次使用的模拟器。";
 

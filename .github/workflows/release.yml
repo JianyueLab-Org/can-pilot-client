@@ -9,7 +9,8 @@
 # 文件，而那个提交又会触发这个工作流，自己咬自己。数标签没有这个问题——标签就是
 # 已发布版本的唯一事实来源。v0.0.x 那几个老标签不在本系列里，不参与计数。
 #
-# 只能在 Windows 上打：SimConnect、opus、RNNoise 都是 Windows x64 原生库。
+# 发三个平台：Windows x64（MSFS + X-Plane；SimConnect、opus、RNNoise 是 x64 原生库，只能在 Windows 上打）、
+# macOS arm64 / x64（CAN Pilot.app，要在 macOS 上做 ad-hoc 签名）、Linux x64（tar.gz）。macOS / Linux 只接 X-Plane。
 #
 # X-Plane 原生插件包 native/XPC_for_CAN-plugin.zip 直接放在仓库里：它来自私有仓库
 # can-xplane-client 的固定发布包，CI 的 GITHUB_TOKEN 读不到别的私有仓库。换插件版本时
@@ -90,19 +91,46 @@ jobs:
           path: native/rnnoise/out/
           if-no-files-found: error
 
+  rnnoise-unix:
+    # macOS / Linux 的 RNNoise：同一个发布包和 CMakeLists，用 build.sh 构建 .dylib / .so。
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, rid: linux-x64, arch: '' }
+          - { os: macos-latest, rid: osx-arm64, arch: arm64 }
+          - { os: macos-latest, rid: osx-x64, arch: x86_64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: native/rnnoise/out-${{ matrix.rid }}
+          key: rnnoise-0.2-${{ matrix.rid }}-${{ hashFiles('native/rnnoise/CMakeLists.txt', 'native/rnnoise/build.sh', 'native/rnnoise/compat/os_support.h') }}
+      - name: 构建 librnnoise
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bash native/rnnoise/build.sh "native/rnnoise/out-${{ matrix.rid }}" "${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rnnoise-${{ matrix.rid }}
+          path: native/rnnoise/out-${{ matrix.rid }}/
+          if-no-files-found: error
+
   test:
     # 和 build 并行。测试没过就不发——release 同时依赖两者。
-    runs-on: windows-latest
+    # 三个平台都跑：macOS / Linux 走的是 OpenAL、托管 Opus 和各自的 PTT 实现。
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - name: 单元测试 + 界面渲染测试
-        shell: pwsh
-        run: |
-          dotnet test CanMfsClient.slnx -c Release
-          if ($LASTEXITCODE) { throw "测试没过" }
+        run: dotnet test CanMfsClient.slnx -c Release
 
   build:
     needs: [version, rnnoise]
@@ -166,14 +194,91 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: can-pilot
+          name: can-pilot-win-x64
           path: dist/*.zip
+          if-no-files-found: error
+
+  build-unix:
+    # macOS / Linux：只接 X-Plane。单文件程序 + 随包文件；macOS 包成 CAN Pilot.app 并做 ad-hoc 签名。
+    needs: [version, rnnoise-unix]
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, rid: linux-x64 }
+          - { os: macos-latest, rid: osx-arm64 }
+          - { os: macos-latest, rid: osx-x64 }
+    runs-on: ${{ matrix.os }}
+    env:
+      OUTPUT: can-pilot
+      RID: ${{ matrix.rid }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: rnnoise-${{ matrix.rid }}
+          path: native/rnnoise/out-${{ matrix.rid }}
+      - name: 放 librnnoise
+        # CanClient.Core.csproj 只在仓库根目录有这些文件时才把它们带进输出
+        run: cp native/rnnoise/out-$RID/librnnoise.* native/rnnoise/out-$RID/RNNOISE-COPYING .
+
+      - name: 发布 ${{ matrix.rid }}
+        env:
+          # Directory.Build.props 读它；标题栏、日志、更新检查报的都是它
+          CAN_VERSION: ${{ needs.version.outputs.number }}
+        # 参数和 build.sh 一致：自包含单文件，原生库打进程序，不裁剪
+        run: |
+          dotnet publish src/CanClient/CanClient.csproj -c Release -r "$RID" --self-contained true -o "dist/$OUTPUT" \
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+
+      - name: 验随包文件
+        run: |
+          set -euo pipefail
+          root="dist/$OUTPUT"
+          missing=""
+          for f in can-pilot XPC_for_CAN-plugin.zip XPLANE-NOTICES.md RNNOISE-COPYING; do
+            [ -e "$root/$f" ] || missing="$missing $f"
+          done
+          if [ -n "$missing" ]; then echo "::error::包里缺这些文件:$missing"; exit 1; fi
+          # 固定发布包里只有 Windows 版交通插件；缺本平台插件时他机显示不了，联飞、语音照常。不挡发布，只提醒
+          case "$RID" in osx-*) xpl=mac.xpl ;; *) xpl=lin.xpl ;; esac
+          if ! unzip -l "$root/XPC_for_CAN-plugin.zip" | grep -q "XPC_for_CAN/64/$xpl"; then
+            echo "::warning::XPC_for_CAN-plugin.zip 里没有 $xpl，$RID 版暂时无法安装 X-Plane 交通插件"
+          fi
+
+      - name: 压包
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.number }}
+        run: |
+          set -euo pipefail
+          case "$RID" in
+            osx-*)
+              bash tools/make-macos-app.sh "dist/$OUTPUT" "dist/CAN Pilot.app" "$VERSION"
+              (cd dist && ditto -c -k --keepParent "CAN Pilot.app" "$OUTPUT-$TAG-$RID.zip")
+              ;;
+            *)
+              chmod +x "dist/$OUTPUT/can-pilot"
+              tar -czf "dist/$OUTPUT-$TAG-$RID.tar.gz" -C dist "$OUTPUT"
+              ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: can-pilot-${{ matrix.rid }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
           if-no-files-found: error
 
   release:
     # 只有推到默认分支才发。手动触发和别的分支只出产物挂在 Actions 里，方便试包而不占版本号。
     if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
-    needs: [version, test, build]
+    needs: [version, test, build, build-unix]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -182,8 +287,9 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: can-pilot
+          pattern: can-pilot-*
           path: packages
+          merge-multiple: true
 
       - name: 生成发布包 SHA-256 清单
         shell: bash
@@ -194,7 +300,7 @@ jobs:
             sha256sum "$file" \
               | awk -v name="${file#packages/}" '{print $1 "  " name}' \
               >> packages/SHA256SUMS
-          done < <(find packages -type f -name '*.zip' -print0 | sort -z)
+          done < <(find packages -type f \( -name '*.zip' -o -name '*.tar.gz' \) -print0 | sort -z)
           test -s packages/SHA256SUMS
 
       - name: 打标签
@@ -213,17 +319,36 @@ jobs:
           name: CAN Pilot Client ${{ needs.version.outputs.tag }}
           files: |
             packages/*.zip
+            packages/*.tar.gz
             packages/SHA256SUMS
           generate_release_notes: true
           body: |
             ## 下载
 
-            `can-pilot-${{ needs.version.outputs.tag }}-win-x64.zip`：CAN 连飞网络的统一飞行员客户端，
-            支持 MSFS 2020 / 2024 与 X-Plane 11.50+ / 12，Windows x64。
+            | 文件 | 平台 | 模拟器 |
+            |---|---|---|
+            | `can-pilot-${{ needs.version.outputs.tag }}-win-x64.zip` | Windows x64 | MSFS 2020 / 2024、X-Plane 11.50+ / 12 |
+            | `can-pilot-${{ needs.version.outputs.tag }}-osx-arm64.zip` | macOS（Apple Silicon） | X-Plane 11.50+ / 12 |
+            | `can-pilot-${{ needs.version.outputs.tag }}-osx-x64.zip` | macOS（Intel） | X-Plane 11.50+ / 12 |
+            | `can-pilot-${{ needs.version.outputs.tag }}-linux-x64.tar.gz` | Linux x64 | X-Plane 11.50+ / 12 |
+
+            ### Windows
 
             解压到一个**可写**的目录，运行里面的 `can-pilot.exe`。无需安装 .NET 或 Python。
             分发和升级时请保留整个文件夹：`ModelMatchingData.bin`（MSFS 模型库）、
             `XPC_for_CAN-plugin.zip`（X-Plane 他机插件）和许可证文件都要和 EXE 放在一起。
+
+            ### macOS
+
+            解压得到 `CAN Pilot.app`，拖进"应用程序"。包没有经过 Apple 公证，第一次打开前在终端执行一次
+            `xattr -dr com.apple.quarantine "/Applications/CAN Pilot.app"`。键盘 / 鼠标侧键 PTT 需要在
+            "系统设置 → 隐私与安全性 → 输入监控"里允许 CAN Pilot；麦克风权限在第一次连语音时弹出。
+            设置和日志在 `~/Library/Application Support/CAN Pilot Client`。
+
+            ### Linux
+
+            解压到可写目录，运行 `can-pilot/can-pilot`。键盘 / 鼠标 PTT 读取 `/dev/input`，需要把用户加入
+            `input` 组（`sudo usermod -aG input $USER` 后重新登录）。
 
             ### X-Plane 的他机插件
 

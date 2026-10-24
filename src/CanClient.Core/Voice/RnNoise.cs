@@ -4,7 +4,8 @@ using CanClient.Core.Util;
 namespace CanClient.Core.Voice;
 
 /// <summary>
-/// RNNoise 麦克风降噪，直接调 xiph RNNoise v0.2 的原生库（由 native/rnnoise 构建，随程序发布）。
+/// RNNoise 麦克风降噪，直接调 xiph RNNoise v0.2 的原生库（由 native/rnnoise 构建，随程序发布；
+/// Windows 是 rnnoise.dll，Linux / macOS 是 librnnoise.so / librnnoise.dylib，DllImport 按平台补前后缀）。
 /// 库不在、或者设备不是 48 kHz（模型只训练了 48 kHz）时直通不处理——降噪没了可以接受，发不出话不行。
 /// </summary>
 public sealed class Denoiser : IDisposable
@@ -15,13 +16,13 @@ public sealed class Denoiser : IDisposable
     private static readonly Logger Log = Util.Log.For("denoise");
     private static bool? _available;
 
-    [DllImport("rnnoise.dll", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport("rnnoise", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr rnnoise_create(IntPtr model);
 
-    [DllImport("rnnoise.dll", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport("rnnoise", CallingConvention = CallingConvention.Cdecl)]
     private static extern unsafe float rnnoise_process_frame(IntPtr state, float* output, float* input);
 
-    [DllImport("rnnoise.dll", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport("rnnoise", CallingConvention = CallingConvention.Cdecl)]
     private static extern void rnnoise_destroy(IntPtr state);
 
     private IntPtr _state;
