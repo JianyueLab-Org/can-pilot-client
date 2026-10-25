@@ -25,6 +25,7 @@ public sealed class Denoiser : IDisposable
     [DllImport("rnnoise", CallingConvention = CallingConvention.Cdecl)]
     private static extern void rnnoise_destroy(IntPtr state);
 
+    private readonly object _lock = new();
     private IntPtr _state;
     private readonly float[] _buffer = new float[Frame];
 
@@ -70,32 +71,38 @@ public sealed class Denoiser : IDisposable
 
     public int RateHz { get; }
 
-    public bool Active => _state != IntPtr.Zero;
+    public bool Active { get { lock (_lock) return _state != IntPtr.Zero; } }
 
     /// <summary>就地处理一帧（长度必须是 480 的整数倍）。</summary>
     public unsafe void Process(Span<short> samples)
     {
-        if (!Active || samples.Length == 0 || samples.Length % Frame != 0)
-            return;
-        fixed (float* buffer = _buffer)
+        lock (_lock)
         {
-            for (var offset = 0; offset < samples.Length; offset += Frame)
+            if (_state == IntPtr.Zero || samples.Length == 0 || samples.Length % Frame != 0)
+                return;
+            fixed (float* buffer = _buffer)
             {
-                for (var i = 0; i < Frame; i++)
-                    buffer[i] = samples[offset + i];
-                rnnoise_process_frame(_state, buffer, buffer);
-                for (var i = 0; i < Frame; i++)
-                    samples[offset + i] = (short)Math.Clamp(MathF.Round(buffer[i]), -32768, 32767);
+                for (var offset = 0; offset < samples.Length; offset += Frame)
+                {
+                    for (var i = 0; i < Frame; i++)
+                        buffer[i] = samples[offset + i];
+                    rnnoise_process_frame(_state, buffer, buffer);
+                    for (var i = 0; i < Frame; i++)
+                        samples[offset + i] = (short)Math.Clamp(MathF.Round(buffer[i]), -32768, 32767);
+                }
             }
         }
     }
 
     public void Dispose()
     {
-        if (_state != IntPtr.Zero)
+        lock (_lock)
         {
-            rnnoise_destroy(_state);
-            _state = IntPtr.Zero;
+            if (_state != IntPtr.Zero)
+            {
+                rnnoise_destroy(_state);
+                _state = IntPtr.Zero;
+            }
         }
     }
 }

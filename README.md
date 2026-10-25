@@ -99,6 +99,53 @@ X-Plane 插件包 `native/XPC_for_CAN-plugin.zip` 已提交在仓库里，CI 直
 
 自己的位置取模拟器实时坐标，没有模拟器时到 data.json 里按 CID 找；找不到自己、或 data.json 超过 1 分钟拉不到时，全部放行。可在“设置 → 音频”关闭。
 
+## 麦克风与语音会话生命周期
+
+语音连接和设置页电平表各持有一份麦克风采集引用。断开语音只释放语音自己的引用；电平表仍开启时继续采集。
+会话关闭会等待正在处理的麦克风 DSP 帧结束，再销毁降噪状态。已取出的旧回调在会话停止后不再处理音频，也不再创建降噪器或限幅器。
+`Denoiser.Process` 与 `Dispose` 按实例串行执行，共用的原生状态和处理缓冲区在整帧完成前不会被释放或复用。重复释放安全。
+自动重连沿用仍在运行的会话；断开后再次连接创建新会话。停止的 `VoiceSession` 不重新启动。
+
+生命周期单元测试不打开真实声卡、不连接服务器：
+
+```bash
+dotnet test tests/CanClient.Tests --filter FullyQualifiedName~VoiceLifetimeTests
+```
+
+原生边界检查在独立进程中使用真实 RNNoise v0.2；探针只在原生处理完成、返回托管调用方前阻塞返回，检查并发释放和迟到回调。
+该进程独占 P/Invoke 解析器，不修改单元测试进程的原生库解析或 RNNoise 可用性缓存。物理麦克风由测试设备替代，采集引用计数、PCM 分帧、回调和会话关闭仍走实际实现。
+
+```bash
+work="$PWD/.temp/voice-smoke"
+mkdir -p "$work" "$work/tmp"
+export TMPDIR="$work/tmp"
+curl -fsSL -o "$work/rnnoise-0.2.tar.gz" \
+  https://github.com/xiph/rnnoise/releases/download/v0.2/rnnoise-0.2.tar.gz
+sha=90fce4b00b9ff24c08dbfe31b82ffd43bae383d85c5535676d28b0a2b11c0d37
+if command -v sha256sum >/dev/null; then
+  printf '%s  %s\n' "$sha" "$work/rnnoise-0.2.tar.gz" | sha256sum -c -
+else
+  printf '%s  %s\n' "$sha" "$work/rnnoise-0.2.tar.gz" | shasum -a 256 -c -
+fi
+tar -xzf "$work/rnnoise-0.2.tar.gz" -C "$work"
+cmake -S native/rnnoise -B "$work/build" -DCMAKE_BUILD_TYPE=Release \
+  "-DRNNOISE_SRC=$work/rnnoise-0.2"
+cmake --build "$work/build" --config Release
+
+if [ "$(uname)" = Darwin ]; then
+  probe="$work/libcan_voice_probe.dylib"
+  rnnoise="$work/build/librnnoise.dylib"
+  cc -std=c11 -dynamiclib tests/CanClient.VoiceLifetimeSmoke/rnnoise_probe.c -o "$probe"
+else
+  probe="$work/libcan_voice_probe.so"
+  rnnoise="$work/build/librnnoise.so"
+  cc -std=c11 -shared -fPIC tests/CanClient.VoiceLifetimeSmoke/rnnoise_probe.c -o "$probe" -ldl
+fi
+dotnet run --project tests/CanClient.VoiceLifetimeSmoke -- "$probe" "$rnnoise"
+```
+
+探针与真实 RNNoise 库的架构须与 .NET 运行进程一致。该检查不代替真实声卡、Windows WinMM 或线上语音联调。
+
 ## X-Plane 接入
 
 1. 打开“设置 → 模拟器”，接入模式选 `Auto`（自动检测）或 `XPlane`，MSFS 用户可选 `MSFS`；X-Plane 目录和插件配置在相邻的“X-Plane”页。
