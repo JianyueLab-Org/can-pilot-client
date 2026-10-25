@@ -80,6 +80,8 @@ public sealed class VoiceSession : IDisposable
 
     // 发送
     private OpusEncoder? _encoder;
+    // 降噪器的创建、处理、释放都在这把锁里：设置页电平表还占着麦克风时，退订之后采集回调可能还在跑
+    private readonly object _dspLock = new();
     private Denoiser? _denoiser;
     private Limiter? _limiter;
     private volatile bool _transmitting;
@@ -228,6 +230,9 @@ public sealed class VoiceSession : IDisposable
         {
             _encoder?.Dispose();
             _encoder = null;
+        }
+        lock (_dspLock)
+        {
             _denoiser?.Dispose();
             _denoiser = null;
         }
@@ -616,8 +621,15 @@ public sealed class VoiceSession : IDisposable
         var samples = frame;
         if (_options.Denoise && Denoiser.Available)
         {
-            _denoiser ??= new Denoiser(AudioEngine.SampleRate);
-            _denoiser.Process(samples);
+            lock (_dspLock)
+            {
+                // Release 之后迟到的回调不能再建一个没人释放的原生状态
+                if (_running)
+                {
+                    _denoiser ??= new Denoiser(AudioEngine.SampleRate);
+                    _denoiser.Process(samples);
+                }
+            }
         }
         _limiter ??= new Limiter(AudioEngine.SampleRate);
         _limiter.Process(samples, MicGain.DbToLinear(_options.MicGainDb));

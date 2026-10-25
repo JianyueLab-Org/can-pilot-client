@@ -476,7 +476,7 @@ public sealed class FsdClient : IDisposable
                 Status(LinkState.Error, "FSD 服务器关闭了连接。");
                 return false;
             }
-            if (!HandlePacket(packet))
+            if (!HandlePacketSafely(packet))
                 return false;
             if (_loggedIn)
             {
@@ -518,7 +518,7 @@ public sealed class FsdClient : IDisposable
                     : "FSD 连接断开了。");
                 return;
             }
-            if (packet is not null && !HandlePacket(packet))
+            if (packet is not null && !HandlePacketSafely(packet))
                 return;
 
             now = Seconds();
@@ -649,6 +649,20 @@ public sealed class FsdClient : IDisposable
                 Log.Info($"FSD receive failed: {e.GetType().Name}: {e.Message}");
                 return "";
             }
+        }
+    }
+
+    /// <summary>别人发来的畸形包只丢这一个，不能把整条连接拖下去重连。</summary>
+    private bool HandlePacketSafely(string packet)
+    {
+        try
+        {
+            return HandlePacket(packet);
+        }
+        catch (Exception e)
+        {
+            Log.Warning($"dropped a malformed packet {packet.Split(':')[0]} ({e.GetType().Name}: {e.Message})");
+            return true;
         }
     }
 
@@ -841,13 +855,14 @@ public sealed class FsdClient : IDisposable
         try
         {
             var attitude = FsdProtocol.UnpackPbh(unchecked((uint)long.Parse(fields[8])));
-            FsdProtocol.TryDouble(fields[4], out var lat);
-            FsdProtocol.TryDouble(fields[5], out var lon);
-            if (!FsdProtocol.TryDouble(fields[6], out var alt) || !FsdProtocol.TryDouble(fields[7], out var gs))
-                throw new FormatException("bad altitude/groundspeed");
+            var lat = Parse(fields[4]);
+            var lon = Parse(fields[5]);
+            CheckCoordinates(lat, lon);
+            var alt = Parse(fields[6]);
+            var gs = Parse(fields[7]);
             var mode = fields[0].Length > 1 ? fields[0][1..] : "S";
-            _traffic.UpdatePosition(callsign, lat, lon, (int)AdjustAltitude(alt), attitude.Pitch, attitude.Bank,
-                attitude.Heading, attitude.OnGround, (int)gs, int.Parse(fields[2]), mode);
+            _traffic.UpdatePosition(callsign, lat, lon, ToInt(AdjustAltitude(alt)), attitude.Pitch, attitude.Bank,
+                attitude.Heading, attitude.OnGround, ToInt(gs), int.Parse(fields[2]), mode);
         }
         catch (Exception e) when (e is FormatException or OverflowException or IndexOutOfRangeException)
         {
@@ -881,10 +896,19 @@ public sealed class FsdClient : IDisposable
                 rotation = new Vec3(-FsdProtocol.RadToDeg(Parse(fields[9])), FsdProtocol.RadToDeg(Parse(fields[10])),
                     -FsdProtocol.RadToDeg(Parse(fields[11])));
                 noseWheel = Parse(fields[12]);
+                // 弧度换度可能把很大的有限值乘成 Infinity
+                if (!double.IsFinite(rotation.A) || !double.IsFinite(rotation.B) || !double.IsFinite(rotation.C))
+                    throw new FormatException("rotation out of range");
             }
-            var groundspeed = (int)Math.Round(Math.Sqrt(velocity.C * velocity.C + velocity.A * velocity.A) * FsdProtocol.KnotsPerMps,
-                MidpointRounding.ToEven);
-            _traffic.UpdatePosition(callsign, Parse(fields[1]), Parse(fields[2]), AdjustAltitude(Parse(fields[3])),
+            var groundspeed = ToInt(Math.Round(Math.Sqrt(velocity.C * velocity.C + velocity.A * velocity.A) * FsdProtocol.KnotsPerMps,
+                MidpointRounding.ToEven));
+            var lat = Parse(fields[1]);
+            var lon = Parse(fields[2]);
+            CheckCoordinates(lat, lon);
+            var altitude = AdjustAltitude(Parse(fields[3]));
+            if (!double.IsFinite(altitude))
+                throw new FormatException($"altitude out of range: {fields[3]}");
+            _traffic.UpdatePosition(callsign, lat, lon, altitude,
                 attitude.Pitch, attitude.Bank, attitude.Heading, attitude.OnGround, groundspeed,
                 velocity: velocity, rotation: rotation, agl: agl, noseWheel: noseWheel);
         }
@@ -894,8 +918,20 @@ public sealed class FsdClient : IDisposable
         }
     }
 
+    /// <summary>NaN、±Infinity 也算解析失败：进了交通表会一路积分下去，最后让整帧 X-Plane 数据序列化失败。</summary>
     private static double Parse(string text) =>
-        FsdProtocol.TryDouble(text, out var value) ? value : throw new FormatException($"not a number: {text}");
+        FsdProtocol.TryDouble(text, out var value) && double.IsFinite(value)
+            ? value
+            : throw new FormatException($"not a finite number: {text}");
+
+    private static void CheckCoordinates(double lat, double lon)
+    {
+        if (Math.Abs(lat) > 90 || Math.Abs(lon) > 180)
+            throw new FormatException($"position out of range: {lat}, {lon}");
+    }
+
+    /// <summary>超出 int 范围的有限值按边界截断，别让强转溢出成负数。</summary>
+    private static int ToInt(double value) => (int)Math.Clamp(value, int.MinValue, int.MaxValue);
 
     /// <summary>他机高度按本机温度误差修正后再进运动模型。没有本机快照时不改。</summary>
     private double AdjustAltitude(double altitude)
@@ -936,9 +972,13 @@ public sealed class FsdClient : IDisposable
             return;
         if (payload is null)
             Send($"$CR{Callsign}:{sender}:ACC:{WireJson(OwnConfig(full: false))}");
-        else if (payload["request"]?.GetValue<string>() == "full")
+        else if (IsFullConfigRequest(payload))
             Send($"$CQ{Callsign}:{sender}:ACC:{WireJson(new JsonObject { ["config"] = OwnConfig(full: true) })}");
     }
+
+    /// <summary>{"request":"full"}。request 不是字符串（布尔、数字、对象、数组）一律不算。</summary>
+    internal static bool IsFullConfigRequest(JsonObject payload) =>
+        payload["request"] is JsonValue value && value.TryGetValue<string>(out var request) && request == "full";
 
     private static string WireJson(JsonNode? value) =>
         (value ?? new JsonObject()).ToJsonString(new JsonSerializerOptions { WriteIndented = false });
