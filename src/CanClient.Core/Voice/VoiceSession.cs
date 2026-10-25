@@ -783,7 +783,7 @@ public sealed class VoiceSession : IDisposable
             {
                 _receiving = true;
                 _talker = connection.User(session)?.Name ?? session.ToString();
-                Log.Debug($"receiving audio from {_talker}");
+                Log.Debug("receiving audio");
                 ReceivingChanged?.Invoke(true);
             }
             _audio.Play(session, pcm.AsSpan(0, samples));
@@ -815,7 +815,7 @@ public sealed class VoiceSession : IDisposable
             if (Stopwatch.GetElapsedTime(last).TotalSeconds > RxTimeout)
             {
                 _receiving = false;
-                Log.Debug($"stopped hearing {_talker}");
+                Log.Debug("audio reception stopped");
                 ReceivingChanged?.Invoke(false);
             }
         }

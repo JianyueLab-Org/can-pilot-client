@@ -1,7 +1,9 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="CanClient.App"
+             Name="CAN Pilot"
              RequestedThemeVariant="Dark">
+  <NativeMenu.Menu><NativeMenu /></NativeMenu.Menu>
 
   <!--
     主题结构：

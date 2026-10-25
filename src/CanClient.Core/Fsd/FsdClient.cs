@@ -290,7 +290,7 @@ public sealed class FsdClient : IDisposable
         // 重连期间的失败不是终态
         if (_retryable && state is LinkState.Error or LinkState.Stopped)
             state = LinkState.Reconnecting;
-        Log.Info($"{Callsign} {state}: {message}");
+        Log.Info($"connection state: {state}");
         try
         {
             StatusChanged?.Invoke(state, message);
@@ -327,7 +327,7 @@ public sealed class FsdClient : IDisposable
                     sent += socket.Send(bytes, sent, bytes.Length - sent, SocketFlags.None);
             }
             if (Log.IsDebugEnabled)
-                Log.Debug($"→ {Redact(packet)}");
+                Log.Debug($"→ protocol packet ({packet.Length} characters; content omitted)");
             return true;
         }
         catch (Exception e)
@@ -456,7 +456,7 @@ public sealed class FsdClient : IDisposable
 
         var greeting = ReadPacket(5.0);
         if (!string.IsNullOrEmpty(greeting))
-            Log.Info($"server greeting: {greeting}");
+            Log.Info("server greeting received");
 
         var machineId = Callsign.Sum(c => (int)c) * 7919;
         Send($"$ID{Callsign}:SERVER:{FsdProtocol.ClientId}:{AppVersion.ClientName}:{FsdProtocol.ClientMajor}:{FsdProtocol.ClientMinor}:{_cid}:{machineId}");
@@ -670,7 +670,7 @@ public sealed class FsdClient : IDisposable
     private bool HandlePacket(string packet)
     {
         if (Log.IsDebugEnabled)
-            Log.Debug($"← {packet}");
+            Log.Debug($"← protocol packet ({packet.Length} characters; content omitted)");
         var fields = packet.Split(':');
         var head = fields[0];
 
@@ -697,7 +697,7 @@ public sealed class FsdClient : IDisposable
                 Status(LinkState.Error, $"FSD 服务器拒绝登录（错误 {code}）：{message}");
                 return false;
             }
-            Log.Warning($"the server returned an error ({code}): {message}");
+            Log.Warning($"the server returned an error ({code}); content omitted");
             return true;
         }
 
@@ -959,7 +959,7 @@ public sealed class FsdClient : IDisposable
             payload = ParseJson(body);
             if (payload is null)
             {
-                Log.Debug($"unreadable ACC payload from {sender}: {body}");
+                Log.Debug("unreadable ACC payload (content omitted)");
                 return;
             }
         }

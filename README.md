@@ -11,6 +11,8 @@ CAN 连飞网络的统一飞行员客户端，支持 Microsoft Flight Simulator�
 
 ## 环境
 
+隐私与数据处理说明见 [PRIVACY.md](PRIVACY.md)。Linux/macOS 使用 can-client-ui 的跨平台窗口、字体和矢量图标适配；macOS 支持无边框窗口边缘缩放，niri 下主窗口浮动打开。
+
 - Windows x64、macOS 12+（仅 Apple Silicon ARM64）或 Linux x64，[.NET 10 SDK](https://dotnet.microsoft.com/download)。
 - 实际联飞需要启动 MSFS（仅 Windows）或 X-Plane，准备 CAN 账号，并能访问所选语音 / FSD 服务器。
 - 可选：RNNoise 麦克风降噪。Windows 需要 CMake + Visual Studio 2022 Build Tools（C++ 桌面开发）；macOS / Linux 需要 CMake 和 C 编译器（Xcode 命令行工具 / gcc）。

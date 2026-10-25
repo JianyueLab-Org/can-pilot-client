@@ -24,7 +24,7 @@ public sealed class ModelMatchingSettings
 /// <summary>
 /// 配置，存成程序目录下的 msfs_settings.json，键名和 Python 版一致，老配置直接读得进来。
 ///
-/// **密码默认不落盘。** 这里的密码就是成员的网站密码（can-api 的 VerifyNetworkCredential 两个列都认），
+    /// **密码默认不落盘，主动记住时仅保存到操作系统凭据库。** 这里的密码就是成员的网站密码（can-api 的 VerifyNetworkCredential 两个列都认），
 /// 这个文件泄露一次，泄露的是整个账号。所以 remember_password 默认关，<see cref="Save"/> 只在它为
 /// true 时写密码。老配置里已经有明文密码（没有 remember_password 这个键）的，读进内存照常能连，然后
 /// 立刻把文件重写掉并置上 <see cref="PasswordMigrated"/> 让界面说一声。
@@ -185,7 +185,19 @@ public sealed class AppSettings
             settings = new AppSettings();
 
         settings.Path = path;
+        Privacy.Protect(settings.Cid, settings.Password, settings.RealName, settings.Callsign);
         settings.Migrate(raw);
+        if (settings.RememberPassword)
+        {
+            try
+            {
+                var stored = CredentialStore.Read();
+                if (stored is null) settings.RememberPassword = false;
+                else settings.Password = stored;
+            }
+            catch { settings.RememberPassword = false; Log.Warning("系统凭据库不可用，请在连接前重新输入密码。"); }
+        }
+        Privacy.Protect(settings.Cid, settings.Password, settings.RealName, settings.Callsign);
         return settings;
     }
 
@@ -246,7 +258,7 @@ public sealed class AppSettings
         LegacyJoystickPtt = null;
 
         // 老版本存下来的明文密码：本次还能用，但从文件里清掉
-        if (raw is not null && raw["remember_password"] is null && !string.IsNullOrWhiteSpace(Password))
+        if (raw is not null && !string.IsNullOrWhiteSpace(Password))
         {
             RememberPassword = false;
             PasswordMigrated = true;
@@ -266,25 +278,33 @@ public sealed class AppSettings
         return null;
     }
 
-    public void Save()
+    public void Save(bool throwOnError = false)
     {
+        Privacy.Protect(Cid, Password, RealName, Callsign);
         try
         {
             var node = JsonSerializer.SerializeToNode(this, JsonOptions)!.AsObject();
-            // 没勾"记住密码"就不写。写空串而不是把键删掉，迁移判据只认 remember_password。
-            if (!RememberPassword)
-                node["password"] = "";
+            node["password"] = "";
+            try { CredentialStore.Save(RememberPassword ? Password : null); }
+            catch
+            {
+                RememberPassword = false;
+                node["remember_password"] = false;
+                Log.Warning("系统凭据库不可用，密码仅保留在当前会话，未保存到配置文件。");
+            }
             foreach (var legacy in new[] { "speaker_volume", "package_roots", "ptt_key", "joystick_ptt", "mic_volume" })
                 node.Remove(legacy);
             var directory = System.IO.Path.GetDirectoryName(Path);
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
             var temp = Path + ".tmp";
-            File.WriteAllText(temp, node.ToJsonString(JsonOptions));
+            PrivateFiles.Write(temp, node.ToJsonString(JsonOptions));
             File.Move(temp, Path, overwrite: true);
+            PrivateFiles.Restrict(Path);
         }
         catch (Exception e)
         {
+            if (throwOnError) throw;
             Log.Warning($"could not save the settings: {e.Message}");
         }
     }
