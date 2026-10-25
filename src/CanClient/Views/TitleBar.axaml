@@ -13,10 +13,10 @@
                  VerticalAlignment="Center" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-        <Button Classes="ghost icon" Content="—" FontSize="10" ToolTip.Tip="最小化"
+        <Button Classes="ghost icon" ToolTip.Tip="最小化"
                 IsVisible="{Binding CanMinimize, RelativeSource={RelativeSource AncestorType=views:TitleBar}}"
-                Click="OnMinimizeClick" />
-        <Button Classes="ghost icon danger" Content="✕" ToolTip.Tip="关闭" Click="OnCloseClick" />
+                Click="OnMinimizeClick"><PathIcon Classes="minimize" /></Button>
+        <Button Classes="ghost icon danger" ToolTip.Tip="关闭" Click="OnCloseClick"><PathIcon Classes="close" /></Button>
       </StackPanel>
     </Grid>
   </Border>

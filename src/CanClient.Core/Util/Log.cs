@@ -45,6 +45,7 @@ public static class Log
                 _writer?.Dispose();
                 _writer = null;
                 Directory.CreateDirectory(_directory);
+                Prune(_directory);
                 _date = DateOnly.FromDateTime(DateTime.Now);
                 _path = Path.Combine(_directory, $"{_date:yyyy-MM-dd}.log");
                 OpenWriter();
@@ -75,6 +76,7 @@ public static class Log
     {
         if (level < Level)
             return;
+        message = Privacy.Sanitize(message);
 
         string line;
         lock (Sync)
@@ -89,6 +91,7 @@ public static class Log
                     _writer?.Dispose();
                     _writer = null;
                     Directory.CreateDirectory(_directory);
+                    Prune(_directory);
                     _path = Path.Combine(_directory, $"{date:yyyy-MM-dd}.log");
                     OpenWriter();
                     _date = date;
@@ -117,8 +120,31 @@ public static class Log
 
     private static void OpenWriter()
     {
-        var stream = new FileStream(_path!, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+        var options = new FileStreamOptions { Mode = FileMode.Append, Access = FileAccess.Write, Share = FileShare.ReadWrite };
+        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        var stream = new FileStream(_path!, options);
+        PrivateFiles.Restrict(_path!);
         _writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
+    }
+
+    private static void Prune(string directory)
+    {
+        var cutoff = DateOnly.FromDateTime(DateTime.Now).AddDays(-Privacy.LogRetentionDays + 1);
+        foreach (var file in Directory.EnumerateFiles(directory, "*.log"))
+            if (DateOnly.TryParseExact(Path.GetFileNameWithoutExtension(file), "yyyy-MM-dd", out var date) && date < cutoff)
+                try { File.Delete(file); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
+    public static void DeleteLocalLogs()
+    {
+        lock (Sync)
+        {
+            _writer?.Dispose();
+            _writer = null;
+            if (_directory is null) return;
+            foreach (var file in Directory.EnumerateFiles(_directory, "*.log"))
+                if (DateOnly.TryParseExact(Path.GetFileNameWithoutExtension(file), "yyyy-MM-dd", out _)) File.Delete(file);
+        }
     }
 
     public static void OpenFolder()
