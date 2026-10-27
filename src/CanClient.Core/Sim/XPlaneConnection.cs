@@ -127,14 +127,25 @@ public sealed class XPlaneConnection(AppSettings settings) : IDisposable
 
     private async Task RunAsync(CancellationToken token)
     {
+        string? reported = null;
+        IPEndPoint? silentBeacon = null;
         while (!token.IsCancellationRequested)
         {
             UdpClient? udp = null;
             IPEndPoint? address = null;
+            var source = "fallback";
             try
             {
                 try { address = await DiscoverAsync(token); }
-                catch (SocketException e) { Log.Debug($"beacon discovery: {e.Message}"); }
+                catch (SocketException e) { Log.Info($"beacon discovery failed: {e.Message}"); }
+                if (address is not null) source = string.IsNullOrWhiteSpace(settings.XPlaneHost) ? "beacon" : "settings";
+                // 多网卡时信标可能来自一个收不到回包的虚拟网卡地址；上次它没回数据，这次改走本机回环。
+                if (source == "beacon" && address!.Equals(silentBeacon))
+                {
+                    address = new IPEndPoint(IPAddress.Loopback, address.Port);
+                    source = "loopback retry";
+                    silentBeacon = null;
+                }
                 address ??= _address ?? new IPEndPoint(IPAddress.Loopback, 49000);
                 udp = new UdpClient(AddressFamily.InterNetwork);
                 udp.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
@@ -151,19 +162,35 @@ public sealed class XPlaneConnection(AppSettings settings) : IDisposable
                     await udp.SendAsync(Subscription(i, Datarefs[i].Ref), address, token);
                 Log.Debug($"subscribed to {Datarefs.Length} datarefs at {address}");
                 var silent = DateTime.UtcNow;
+                var receiving = false;
                 while (DateTime.UtcNow - silent < TimeSpan.FromSeconds(10))
                 {
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                     timeout.CancelAfter(500);
                     try
                     {
+                        // 套接字是本次订阅专用的临时端口，只认 RREF 格式即可；X-Plane 的回包源地址/端口
+                        // 不一定等于信标里的地址（多网卡、回包端口不同），严格比对会把有效数据全部丢掉。
                         var packet = await udp.ReceiveAsync(timeout.Token);
-                        if (packet.RemoteEndPoint.Equals(address) && Handle(packet.Buffer)) silent = DateTime.UtcNow;
+                        if (!Handle(packet.Buffer)) continue;
+                        silent = DateTime.UtcNow;
+                        if (receiving) continue;
+                        receiving = true;
+                        var state = $"ok {packet.RemoteEndPoint}";
+                        if (reported != state)
+                            Log.Info($"receiving datarefs from {packet.RemoteEndPoint} (subscribed at {address} via {source})");
+                        reported = state;
                     }
                     catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
                     catch (SocketException) { await Task.Delay(200, token); }
                     token.ThrowIfCancellationRequested();
                 }
+                // 同一个地址只记一次，模拟器没开时不会每 10 秒刷屏。
+                var silence = $"silent {address}";
+                if (reported != silence)
+                    Log.Info($"no RREF reply from {address} (via {source}) for 10 s; X-Plane not running, or its network/firewall is blocking UDP");
+                reported = silence;
+                if (source == "beacon") silentBeacon = address;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
             catch (Exception e) { Log.Warning($"X-Plane connection: {e.Message}"); }
