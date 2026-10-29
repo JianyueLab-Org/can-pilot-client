@@ -6,7 +6,7 @@
   <StackPanel Spacing="8">
     <TextBlock Classes="label" Text="模拟器接入" IsVisible="{Binding SupportsMsfs}" />
     <ComboBox ItemsSource="{Binding SimulatorConnections}" SelectedItem="{Binding SimulatorConnection}" IsEnabled="{Binding CanChangeSimulator}" IsVisible="{Binding SupportsMsfs}" />
-    <TextBlock Classes="caption" Text="Auto：自动检测 MSFS / X-Plane，优先保持已接入的模拟器；联飞时锁定，断开网络后才能切换。" TextWrapping="Wrap" IsVisible="{Binding SupportsMsfs}" />
+    <TextBlock Classes="caption" Text="Auto：自动检测 MSFS / P3D / FSX / X-Plane，优先保持已接入的模拟器；联飞时锁定，断开网络后才能切换。" TextWrapping="Wrap" IsVisible="{Binding SupportsMsfs}" />
     <TextBlock Classes="caption" Text="macOS / Linux 版只接入 X-Plane（MSFS 需要 Windows 上的 SimConnect）。" TextWrapping="Wrap" IsVisible="{Binding !SupportsMsfs}" />
     <TextBlock Classes="section" Text="X-Plane 11 / 12" Margin="0,10,0,0" />
     <TextBlock Classes="label" Text="X-Plane 安装目录" />
@@ -27,6 +27,6 @@
     <TextBlock Classes="label" Text="X-Plane UDP 主机（留空自动发现）" />
     <TextBox Text="{Binding XPlaneHost}" PlaceholderText="自动 / 127.0.0.1" />
     <NumericUpDown Minimum="1" Maximum="65535" Value="{Binding XPlanePort}" FormatString="0" />
-    <TextBlock Classes="caption" Text="原生交通插件使用本机 49900 端口；客户端与 X-Plane 请在同一台电脑运行。MSFS 模型匹配继续在原有模型匹配页面设置。" TextWrapping="Wrap" />
+    <TextBlock Classes="caption" Text="原生交通插件使用本机 49900 端口；客户端与 X-Plane 请在同一台电脑运行。MSFS / P3D / FSX 的模型匹配在各自的页面设置。" TextWrapping="Wrap" />
   </StackPanel>
 </UserControl>

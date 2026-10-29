@@ -12,7 +12,7 @@ public sealed record InjectionTarget(TrafficEntry Entry, string Model);
 public sealed record InjectedAircraftInfo(string Callsign, string Model, uint? ObjectId, bool Frozen);
 
 /// <summary>
-/// 把他机放进 MSFS，对应 Python 版 inject.py。SimConnect 允许外部进程直接建 AI 飞机：
+/// 把他机放进 MSFS / FSX / P3D，对应 Python 版 inject.py。SimConnect 允许外部进程直接建 AI 飞机：
 ///
 ///     创建   AICreateNonATCAircraft(title, 呼号, 初始位置, requestID)
 ///     接管   AIReleaseControl + FREEZE_*_SET（objectID 回来之后各一次）
@@ -135,6 +135,9 @@ public sealed class TrafficInjector : IDisposable
     public bool Available { get; }
 
     public int Generation => _generation;
+
+    /// <summary>注入走的那条 SimConnect 连接（MSFS 或 FSX / P3D）。换了连接就要重建注入器。</summary>
+    public SimConnection Connection => _sim;
 
     public bool FramesSubscribed { get; private set; }
 

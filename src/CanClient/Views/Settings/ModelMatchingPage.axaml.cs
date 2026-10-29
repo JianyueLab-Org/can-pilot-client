@@ -15,7 +15,7 @@ public partial class ModelMatchingPage : UserControl
             return;
         var folders = await top.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "选择 MSFS 包目录（含 Official 和 Community）",
+            Title = vm.PackagesPathLabel,
             AllowMultiple = false
         });
         if (folders.Count > 0 && folders[0].TryGetLocalPath() is { } path)

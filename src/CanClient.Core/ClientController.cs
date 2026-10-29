@@ -98,7 +98,7 @@ public sealed class ClientController : IDisposable
         Sim.Opened += (simulator, name) =>
         {
             Post(MessageKind.System, $"已连接到模拟器：{name}");
-            if (simulator != SimulatorType.XPlane) _ = Models.SetSimulatorAsync(simulator);
+            if (simulator.UsesSimConnect()) _ = Models.SetSimulatorAsync(simulator);
             InvalidateModels();
         };
         _injectionLoop = new InjectionLoop(InjectFrame);
@@ -174,7 +174,7 @@ public sealed class ClientController : IDisposable
             return "请先在“设置 → 网络”里填写 CID 和密码。";
         // 没有模拟器位置时不能登录 FSD：否则服务端保留一条没有有效位置的连接
         if (!observer && !Sim.Connected)
-            return $"还没有连上 {(PlatformSupport.SupportsMsfs ? "MSFS / X-Plane" : "X-Plane")}，或者还没进入飞行。观察员模式可以不开模拟器。";
+            return $"还没有连上 {(PlatformSupport.SupportsMsfs ? "MSFS / P3D / FSX / X-Plane" : "X-Plane")}，或者还没进入飞行。观察员模式可以不开模拟器。";
         if (!observer && Sim.NeedsSelection)
             return "检测到两个模拟器，请先在主页出现的模拟器选择框中选择本次使用的模拟器。";
 
@@ -212,6 +212,8 @@ public sealed class ClientController : IDisposable
         {
             SimulatorType.XPlane => FsdProtocol.SimulatorXPlane,
             SimulatorType.Msfs2024 => FsdProtocol.SimulatorMsfs2024,
+            var s when s.IsFsx() => FsdProtocol.SimulatorFsx,
+            var s when s.IsPrepar3d() => FsdProtocol.SimulatorP3d,
             _ => FsdProtocol.SimulatorMsfs2020
         };
         var fsd = new FsdClient(Settings.FsdHostName, Settings.FsdPortNumber, _callsign, Settings.Cid, Settings.Password,
@@ -468,13 +470,14 @@ public sealed class ClientController : IDisposable
             _origin = (own.Latitude, own.Longitude);
             return;
         }
-        if (_injector is null || _injector.Generation != Sim.Msfs.Generation)
+        var simConnect = Sim.ActiveSimConnect;
+        if (_injector is null || _injector.Connection != simConnect || _injector.Generation != simConnect?.Generation)
         {
             _injector?.Dispose();
             _injector = null;
-            if (Sim.IsOpen && Sim.Simulator != SimulatorType.None)
+            if (simConnect is not null && Sim.IsOpen && Sim.Simulator != SimulatorType.None)
             {
-                var injector = new TrafficInjector(Sim.Msfs);
+                var injector = new TrafficInjector(simConnect);
                 injector.Frame += _injectionLoop.FrameArrived;
                 injector.CreateFailed += OnCreateFailed;
                 _injector = injector;

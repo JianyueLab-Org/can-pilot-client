@@ -79,6 +79,8 @@ public sealed class AppSettings
     [JsonPropertyName("show_all_simulators")] public bool ShowAllSimulators { get; set; }
     [JsonPropertyName("msfs2020_packages_path")] public string Msfs2020PackagesPath { get; set; } = "";
     [JsonPropertyName("msfs2024_packages_path")] public string Msfs2024PackagesPath { get; set; } = "";
+    /// <summary>手动指定的 FSX / P3D 安装目录（模拟器名 → 目录），留空就读注册表。</summary>
+    [JsonPropertyName("simulator_paths")] public Dictionary<string, string> SimulatorPaths { get; set; } = new();
     [JsonPropertyName("xplane_path")] public string XPlanePath { get; set; } = "";
     [JsonPropertyName("csl_path")] public string CslPath { get; set; } = "";
     [JsonPropertyName("xplane_host")] public string XPlaneHost { get; set; } = "";
@@ -155,6 +157,28 @@ public sealed class AppSettings
         if (!ModelMatching.TryGetValue(key, out var settings))
             ModelMatching[key] = settings = new ModelMatchingSettings();
         return settings;
+    }
+
+    /// <summary>设置里给这个模拟器手动指定的模型目录：MSFS 是包目录，FSX / P3D 是安装目录。没指定返回空串。</summary>
+    public string SimulatorPathFor(SimulatorType simulator) => simulator switch
+    {
+        SimulatorType.Msfs => Msfs2020PackagesPath,
+        SimulatorType.Msfs2024 => Msfs2024PackagesPath,
+        _ => SimulatorPaths.GetValueOrDefault(simulator.ToString(), "")
+    };
+
+    public void SetSimulatorPath(SimulatorType simulator, string path)
+    {
+        path = (path ?? "").Trim();
+        switch (simulator)
+        {
+            case SimulatorType.Msfs: Msfs2020PackagesPath = path; break;
+            case SimulatorType.Msfs2024: Msfs2024PackagesPath = path; break;
+            default:
+                if (path.Length == 0) SimulatorPaths.Remove(simulator.ToString());
+                else SimulatorPaths[simulator.ToString()] = path;
+                break;
+        }
     }
 
     public static AppSettings Load(string? path = null)

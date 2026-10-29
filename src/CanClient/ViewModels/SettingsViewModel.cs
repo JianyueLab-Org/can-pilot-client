@@ -10,6 +10,7 @@ using CanClient.Core.Settings;
 using CanClient.Core.Sim;
 using CanClient.Core.Util;
 using CanClient.Core.Voice;
+using Connections = CanClient.Core.Sim.SimulatorConnection;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -76,7 +77,10 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         nameof(LastModelScan), nameof(ModelsFound), nameof(ScanProgressText), nameof(IsScanning), nameof(MatchTestResult),
         nameof(MatchTestCallsign), nameof(MatchTestType), nameof(ServerStatus), nameof(SimulatorName), nameof(PackagesInfo),
         nameof(DataInfo), nameof(SoundVolumeText), nameof(XPlaneStatus), nameof(CslStatus), nameof(CanChangeSimulator),
-        nameof(ShowMsfs2020), nameof(ShowMsfs2024), nameof(ShowMsfs), nameof(ShowXPlane), nameof(PttBindings), nameof(SelectedPttBinding), nameof(CanRemovePtt)
+        nameof(ShowMsfs2020), nameof(ShowMsfs2024), nameof(ShowModelMatching), nameof(ShowXPlane), nameof(ShowFsx), nameof(ShowFsxSe),
+        nameof(ShowP3dV1), nameof(ShowP3dV2), nameof(ShowP3dV3), nameof(ShowP3dV4), nameof(ShowP3dV5), nameof(ShowP3dV6),
+        nameof(SimulatorConnections), nameof(PackagesPathLabel), nameof(PackagesPathPlaceholder), nameof(PttBindings),
+        nameof(SelectedPttBinding), nameof(CanRemovePtt)
     ];
 
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
@@ -151,12 +155,20 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     private void LoadModelMatching()
     {
         var models = _controller.Models;
-        SimulatorName = models.Simulator.DisplayName();
+        var simulator = models.Simulator;
+        var folderName = ModelMatchingService.ModelFolderName(simulator);
+        SimulatorName = simulator.DisplayName();
         DefaultModel = models.DefaultModel;
         PackagesPath = models.Installation?.PackagesPathOverride ?? "";
         PackagesInfo = models.Installation?.PackagesPath is { } path
-            ? $"包目录：{path}"
-            : "没有找到 MSFS 的包目录（UserCfg.opt 里的 InstalledPackagesPath）";
+            ? $"{folderName}：{path}"
+            : simulator.IsLegacy()
+                ? $"没有找到 {simulator.DisplayName()} 的安装目录（注册表里没有登记，或者目录下没有主程序）"
+                : "没有找到 MSFS 的包目录（UserCfg.opt 里的 InstalledPackagesPath）";
+        PackagesPathLabel = simulator.IsLegacy()
+            ? $"{simulator.DisplayName()} 安装目录（含 {(simulator.IsFsx() ? "FSX.exe" : "Prepar3D.exe")} 的那一层，留空则读注册表）"
+            : "MSFS 包目录（含 Official 和 Community 的那一层，留空则读 UserCfg.opt）";
+        PackagesPathPlaceholder = simulator.IsLegacy() ? "自动（注册表）" : "自动";
         DataInfo = models.Data.IsEmpty
             ? "没有读到 ModelMatchingData.bin，只按 aircraft.cfg 匹配"
             : $"模型数据 {models.Data.Serial}：{models.Data.ModelSpecs.Count:N0} 个已知模型，{models.Data.TypeCodes.Count:N0} 个机型";
@@ -259,10 +271,11 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         _settings.Debug = DebugLog;
         Core.Util.Log.Level = DebugLog || Program.Debug ? Core.Util.LogLevel.Debug : Core.Util.LogLevel.Info;
 
-        var oldPath = _controller.Models.Simulator == SimulatorType.Msfs ? _settings.Msfs2020PackagesPath : _settings.Msfs2024PackagesPath;
-        var packagesChanged = (PackagesPath ?? "").Trim() != oldPath;
-        if (_controller.Models.Simulator == SimulatorType.Msfs) _settings.Msfs2020PackagesPath = (PackagesPath ?? "").Trim();
-        else _settings.Msfs2024PackagesPath = (PackagesPath ?? "").Trim();
+        // 模型目录是按模拟器各存一份的：当前页面属于哪个模拟器就写到哪个
+        var simulator = _controller.Models.Simulator;
+        var packagesChanged = simulator.UsesSimConnect() && (PackagesPath ?? "").Trim() != _settings.SimulatorPathFor(simulator);
+        if (packagesChanged)
+            _settings.SetSimulatorPath(simulator, PackagesPath ?? "");
         _settings.Save();
         _controller.ApplyAudioSettings();
 
@@ -287,33 +300,106 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     }
 
     // —— 网络 ——
-    public IReadOnlyList<string> SimulatorConnections { get; } = PlatformSupport.SupportsMsfs ? ["Auto", "MSFS", "XPlane"] : ["XPlane"];
-    /// <summary>MSFS 相关的页面和选项只在 Windows 上显示；macOS / Linux 只有 X-Plane。</summary>
+    /// <summary>
+    /// “模拟器接入”的可选项：Auto 总有；MSFS、FSX/P3D、X-Plane 只列出检测到安装的（或者开了“显示所有模拟器”），
+    /// 当前选着的那一项不管装没装都留着。macOS / Linux 只有 X-Plane。
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<string> _simulatorConnections = PlatformSupport.SupportsMsfs
+        ? [Connections.Auto, Connections.MsfsOnly, Connections.LegacyOnly, Connections.XPlaneOnly]
+        : [Connections.XPlaneOnly];
+    /// <summary>MSFS / FSX / P3D 相关的页面和选项只在 Windows 上显示；macOS / Linux 只有 X-Plane。</summary>
     public bool SupportsMsfs => PlatformSupport.SupportsMsfs;
     [ObservableProperty] private bool _showAllSimulators;
     [ObservableProperty] private bool _showMsfs2020;
     [ObservableProperty] private bool _showMsfs2024;
     [ObservableProperty] private bool _showXPlane;
-    [ObservableProperty] private bool _showMsfs;
-    private bool _msfs2020Installed, _msfs2024Installed, _xplaneInstalled;
+    [ObservableProperty] private bool _showFsx;
+    [ObservableProperty] private bool _showFsxSe;
+    [ObservableProperty] private bool _showP3dV1;
+    [ObservableProperty] private bool _showP3dV2;
+    [ObservableProperty] private bool _showP3dV3;
+    [ObservableProperty] private bool _showP3dV4;
+    [ObservableProperty] private bool _showP3dV5;
+    [ObservableProperty] private bool _showP3dV6;
+    /// <summary>至少显示了一个用 SimConnect 模型匹配的模拟器：“高级规则”“自定义规则”跟着它显示。</summary>
+    [ObservableProperty] private bool _showModelMatching;
+    [ObservableProperty] private string _packagesPathLabel = "";
+    [ObservableProperty] private string _packagesPathPlaceholder = "自动";
+    private readonly HashSet<SimulatorType> _installedSimulators = [];
+    private bool _xplaneInstalled;
     partial void OnShowAllSimulatorsChanged(bool value) => UpdateSimulatorVisibility();
+
+    /// <summary>设置页导航里的模拟器页面：Tag → 模拟器。</summary>
+    public static SimulatorType SimulatorForTag(string tag) => tag switch
+    {
+        "Msfs2020" => SimulatorType.Msfs,
+        "Msfs2024" => SimulatorType.Msfs2024,
+        _ => Enum.TryParse<SimulatorType>(tag, out var simulator) && simulator.IsLegacy() ? simulator : SimulatorType.None
+    };
+
     private void RefreshSimulatorVisibility()
     {
-        var installed = SupportsMsfs ? MsfsInstallation.InstalledSimulators().ToArray() : [];
-        _msfs2020Installed = installed.Contains(SimulatorType.Msfs) || _controller.Sim.Simulator == SimulatorType.Msfs;
-        _msfs2024Installed = installed.Contains(SimulatorType.Msfs2024) || _controller.Sim.Simulator == SimulatorType.Msfs2024;
+        _installedSimulators.Clear();
+        if (SupportsMsfs)
+        {
+            _installedSimulators.UnionWith(SimulatorInstallations.Installed());
+            // 便携安装：设置里手动指定过、目录也还在的 FSX / P3D 算装了，关掉“显示所有”后页面不会消失
+            foreach (var simulator in SimulatorTypeExtensions.Legacy)
+            {
+                var path = _settings.SimulatorPathFor(simulator);
+                if (path.Length > 0 && Directory.Exists(path))
+                    _installedSimulators.Add(simulator);
+            }
+        }
+        // 正在连着的模拟器肯定装了（检测不到的便携版之类）
+        if (_controller.Sim.Simulator != SimulatorType.None)
+            _installedSimulators.Add(_controller.Sim.Simulator);
         _xplaneInstalled = XPlaneInstallation.IsXPlane(XPlanePath) || XPlaneInstallation.FindInstalls().Length > 0 || _controller.Sim.Simulator == SimulatorType.XPlane;
         UpdateSimulatorVisibility();
     }
+
+    private bool ShowSimulator(SimulatorType simulator) =>
+        SupportsMsfs && (ShowAllSimulators || _installedSimulators.Contains(simulator));
+
     private void UpdateSimulatorVisibility()
     {
-        ShowMsfs2020 = SupportsMsfs && (ShowAllSimulators || _msfs2020Installed);
-        ShowMsfs2024 = SupportsMsfs && (ShowAllSimulators || _msfs2024Installed);
+        ShowMsfs2020 = ShowSimulator(SimulatorType.Msfs);
+        ShowMsfs2024 = ShowSimulator(SimulatorType.Msfs2024);
+        ShowFsx = ShowSimulator(SimulatorType.Fsx);
+        ShowFsxSe = ShowSimulator(SimulatorType.FsxSe);
+        ShowP3dV1 = ShowSimulator(SimulatorType.Prepar3d);
+        ShowP3dV2 = ShowSimulator(SimulatorType.Prepar3dV2);
+        ShowP3dV3 = ShowSimulator(SimulatorType.Prepar3dV3);
+        ShowP3dV4 = ShowSimulator(SimulatorType.Prepar3dV4);
+        ShowP3dV5 = ShowSimulator(SimulatorType.Prepar3dV5);
+        ShowP3dV6 = ShowSimulator(SimulatorType.Prepar3dV6);
         // X-Plane 是 macOS / Linux 唯一的模拟器，页面总是显示
         ShowXPlane = !SupportsMsfs || ShowAllSimulators || _xplaneInstalled;
-        ShowMsfs = ShowMsfs2020 || ShowMsfs2024;
+        var anyMsfs = ShowMsfs2020 || ShowMsfs2024;
+        var anyLegacy = ShowFsx || ShowFsxSe || ShowP3dV1 || ShowP3dV2 || ShowP3dV3 || ShowP3dV4 || ShowP3dV5 || ShowP3dV6;
+        ShowModelMatching = anyMsfs || anyLegacy;
+
+        if (!SupportsMsfs)
+            return;
+        var current = SimulatorConnection;
+        var connections = new List<string> { Connections.Auto };
+        if (anyMsfs || current == Connections.MsfsOnly) connections.Add(Connections.MsfsOnly);
+        if (anyLegacy || current == Connections.LegacyOnly) connections.Add(Connections.LegacyOnly);
+        if (ShowXPlane || current == Connections.XPlaneOnly) connections.Add(Connections.XPlaneOnly);
+        if (!connections.Contains(current)) connections.Add(current);
+        if (!SimulatorConnections.SequenceEqual(connections))
+            SimulatorConnections = connections;
     }
-    public async Task SelectMsfsSettingsAsync(SimulatorType simulator)
+
+    // 换选项列表时下拉框可能把选中项清成 null，别让它把设置清掉
+    partial void OnSimulatorConnectionChanged(string? oldValue, string newValue)
+    {
+        if (newValue is null)
+            SimulatorConnection = oldValue ?? Connections.Auto;
+    }
+
+    /// <summary>切到某个模拟器的模型匹配页面。</summary>
+    public async Task SelectModelSettingsAsync(SimulatorType simulator)
     {
         // 切换模型配置前保存当前页面，防止另一模拟器的规则/目录被覆盖。
         if (IsDirty) Apply();
