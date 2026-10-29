@@ -28,7 +28,7 @@ public sealed class ModelMatchingService
     public ModelMatchingData Data { get; private set; } = ModelMatchingData.Empty;
     public ModelMatcher Matcher { get; }
     public SimulatorType Simulator { get; private set; } = SimulatorType.None;
-    public MsfsInstallation? Installation { get; private set; }
+    public ISimulatorInstallation? Installation { get; private set; }
     public ModelScanResult? ScanResult { get; private set; }
     public bool Scanning { get; private set; }
     public ScanProgress? Progress { get; private set; }
@@ -57,7 +57,7 @@ public sealed class ModelMatchingService
     public async Task InitializeAsync()
     {
         await Task.Run(LoadData).ConfigureAwait(false);
-        var installed = MsfsInstallation.InstalledSimulators().ToArray();
+        var installed = SimulatorInstallations.Installed().ToArray();
         var simulator = installed.Contains(_settings.LastSimulator) ? _settings.LastSimulator : installed.FirstOrDefault();
         if (simulator == SimulatorType.None) return;
         await SetSimulatorAsync(simulator).ConfigureAwait(false);
@@ -83,7 +83,7 @@ public sealed class ModelMatchingService
     /// <summary>连上了某个模拟器（或启动时猜的那个）。换了模拟器就换一套扫描结果和规则。</summary>
     public async Task SetSimulatorAsync(SimulatorType simulator, bool forceValidate = false)
     {
-        if (simulator is SimulatorType.None or SimulatorType.XPlane)
+        if (!simulator.UsesSimConnect())
             return;
         if (simulator == Simulator && !forceValidate && ScanResult is not null)
             return;
@@ -97,15 +97,19 @@ public sealed class ModelMatchingService
         var config = Config;
         Matcher.DefaultModel = string.IsNullOrWhiteSpace(config.DefaultModel) ? simulator.DefaultModel() : config.DefaultModel;
         Matcher.ClearErroneous(config.ErroneousModels);
-        var packagesPath = simulator == SimulatorType.Msfs ? _settings.Msfs2020PackagesPath : _settings.Msfs2024PackagesPath;
-        Installation = new MsfsInstallation(simulator, string.IsNullOrWhiteSpace(packagesPath) ? _settings.PackagesPath : packagesPath);
+        var configuredPath = _settings.SimulatorPathFor(simulator);
+        // 老版本只有一个 packages_path，两个 MSFS 共用
+        if (simulator.IsMsfs() && string.IsNullOrWhiteSpace(configuredPath))
+            configuredPath = _settings.PackagesPath;
+        var installation = SimulatorInstallations.Create(simulator, configuredPath)!;
+        Installation = installation;
 
         var cached = ModelScanStore.Load(simulator);
         string? reason;
-        if (Installation.IsValid)
-            reason = await Task.Run(() => ModelScanStore.NeedsRescan(cached, Installation)).ConfigureAwait(false);
+        if (installation.IsValid)
+            reason = await Task.Run(() => ModelScanStore.NeedsRescan(cached, installation)).ConfigureAwait(false);
         else
-            reason = cached is null ? "找不到 MSFS 的包目录" : null;
+            reason = cached is null ? $"找不到 {simulator.DisplayName()} 的{ModelFolderName(simulator)}" : null;
 
         ScanResult = cached;
         Matcher.LoadCustomRuleSets(config.CustomRuleSets, raise: false);
@@ -119,14 +123,17 @@ public sealed class ModelMatchingService
             return;
         }
         Log.Info($"{simulator} needs a model scan: {reason}");
-        if (Installation.IsValid)
+        if (installation.IsValid)
         {
             Notification?.Invoke($"需要扫描已安装的飞机模型（{reason}），正在后台扫描……");
             _ = RescanAsync();
         }
         else
-            Notification?.Invoke($"没有找到 {simulator.FullName()} 的包目录，他机无法匹配模型。可以在设置的“模型匹配”里手动指定。");
+            Notification?.Invoke($"没有找到 {simulator.FullName()} 的{ModelFolderName(simulator)}，他机无法匹配模型。可以在设置的“{simulator.DisplayName()}”页面里手动指定。");
     }
+
+    /// <summary>设置里手动指定的那个目录叫什么：MSFS 是包目录，FSX / P3D 是安装目录。</summary>
+    public static string ModelFolderName(SimulatorType simulator) => simulator.IsMsfs() ? "包目录" : "安装目录";
 
     /// <summary>重新扫描。正在扫的话等它扫完再来一遍。</summary>
     public async Task RescanAsync()

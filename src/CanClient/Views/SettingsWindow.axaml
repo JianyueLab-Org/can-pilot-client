@@ -45,9 +45,18 @@
           <ListBoxItem Content="模拟器" Tag="SimulatorGeneral" IsVisible="{Binding SupportsMsfs}" />
           <ListBoxItem Content="MSFS 2020" Tag="Msfs2020" IsVisible="{Binding ShowMsfs2020}" />
           <ListBoxItem Content="MSFS 2024" Tag="Msfs2024" IsVisible="{Binding ShowMsfs2024}" />
+          <!-- FSX / P3D：Tag 是 SimulatorType 的名字。默认只显示检测到安装的，“显示所有模拟器”打开后全部列出 -->
+          <ListBoxItem Content="FSX" Tag="Fsx" IsVisible="{Binding ShowFsx}" />
+          <ListBoxItem Content="FSX:SE" Tag="FsxSe" IsVisible="{Binding ShowFsxSe}" />
+          <ListBoxItem Content="P3D v1" Tag="Prepar3d" IsVisible="{Binding ShowP3dV1}" />
+          <ListBoxItem Content="P3D v2" Tag="Prepar3dV2" IsVisible="{Binding ShowP3dV2}" />
+          <ListBoxItem Content="P3D v3" Tag="Prepar3dV3" IsVisible="{Binding ShowP3dV3}" />
+          <ListBoxItem Content="P3D v4" Tag="Prepar3dV4" IsVisible="{Binding ShowP3dV4}" />
+          <ListBoxItem Content="P3D v5" Tag="Prepar3dV5" IsVisible="{Binding ShowP3dV5}" />
+          <ListBoxItem Content="P3D v6" Tag="Prepar3dV6" IsVisible="{Binding ShowP3dV6}" />
+          <ListBoxItem Classes="child" Content="模型高级规则" Tag="ModelMatchingAdvanced" IsVisible="{Binding ShowModelMatching}" />
+          <ListBoxItem Classes="child" Content="模型自定义规则" Tag="CustomRules" IsVisible="{Binding ShowModelMatching}" />
           <ListBoxItem Content="X-Plane" Tag="Simulator" IsVisible="{Binding ShowXPlane}" />
-          <ListBoxItem Classes="child" Content="MSFS 高级规则" Tag="ModelMatchingAdvanced" IsVisible="{Binding ShowMsfs}" />
-          <ListBoxItem Classes="child" Content="MSFS 自定义规则" Tag="CustomRules" IsVisible="{Binding ShowMsfs}" />
           <ListBoxItem Content="性能" Tag="Performance" />
           <ListBoxItem Content="更新" Tag="Updates" />
           <ListBoxItem Content="杂项" Tag="Misc" />

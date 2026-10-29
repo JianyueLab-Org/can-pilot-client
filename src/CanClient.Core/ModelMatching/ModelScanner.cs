@@ -20,7 +20,7 @@ public static class ModelScanner
     // 这两家的机模不能当 AI 生成，生成了也是一团糟
     private static readonly string[] IgnoredTitleKeywords = ["pmdg", "carenado"];
 
-    public static ModelScanResult Scan(MsfsInstallation installation, ModelMatchingData data,
+    public static ModelScanResult Scan(ISimulatorInstallation installation, ModelMatchingData data,
         IProgress<ScanProgress>? progress = null, CancellationToken cancellation = default)
     {
         var result = new ModelScanResult

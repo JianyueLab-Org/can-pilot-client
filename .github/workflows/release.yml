@@ -176,8 +176,9 @@ jobs:
         run: |
           $root = "dist/$env:OUTPUT"
           $missing = @()
+          # fsx/ 是 FSX / P3D 的 32 位 SimConnect 桥接（构建失败只会告警，所以在这里兜底）
           foreach ($f in @("can-pilot.exe", "ModelMatchingData.bin", "XPC_for_CAN-plugin.zip",
-                           "XPLANE-NOTICES.md", "RNNOISE-COPYING")) {
+                           "XPLANE-NOTICES.md", "RNNOISE-COPYING", "fsx/can-simconnect.exe", "fsx/SimConnect.dll")) {
             if (-not (Test-Path "$root/$f")) { $missing += $f }
           }
           if ($missing.Count) { throw "包里缺这些文件: $($missing -join ', ')" }

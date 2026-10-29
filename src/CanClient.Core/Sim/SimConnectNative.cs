@@ -3,7 +3,9 @@ using System.Runtime.InteropServices;
 namespace CanClient.Core.Sim;
 
 /// <summary>
-/// SimConnect.dll（MSFS SDK 自带的原生库）的 P/Invoke 声明。
+/// SimConnect 的 C 接口。MSFS 直接 P/Invoke 随包的 x64 SimConnect.dll（MSFS SDK 自带的原生库）；
+/// FSX / P3D 的句柄是 <see cref="SimConnectBridge"/> 发的，同名函数认出句柄就转给 32 位桥接进程。
+/// 调用方（<see cref="SimConnection"/>、<see cref="TrafficInjector"/>）不用管自己连的是哪一种。
 ///
 /// 不用托管包装（Microsoft.FlightSimulator.SimConnect.dll）：它不在 NuGet 上、版本和模拟器绑死，
 /// 而 C 接口在 MSFS 2020 和 2024 上是同一套。结构体按 SimConnect.h 的 #pragma pack(1) 排。
@@ -17,57 +19,133 @@ internal static class SimConnectNative
 
     public const int E_FAIL = unchecked((int)0x80004005);
 
-    [DllImport(Dll, CharSet = CharSet.Ansi)]
-    public static extern int SimConnect_Open(out IntPtr handle, string name, IntPtr hWnd, uint userEventWin32,
-        IntPtr hEventHandle, uint configIndex);
+    public static int SimConnect_Open(out IntPtr handle, string name, IntPtr hWnd, uint userEventWin32,
+        IntPtr hEventHandle, uint configIndex) =>
+        Direct.SimConnect_Open(out handle, name, hWnd, userEventWin32, hEventHandle, configIndex);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_Close(IntPtr handle);
+    public static int SimConnect_Close(IntPtr handle) =>
+        SimConnectBridge.Owns(handle) ? SimConnectBridge.Close(handle) : Direct.SimConnect_Close(handle);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_GetNextDispatch(IntPtr handle, out IntPtr data, out uint size);
+    public static int SimConnect_GetNextDispatch(IntPtr handle, out IntPtr data, out uint size) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.GetNextDispatch(handle, out data, out size)
+            : Direct.SimConnect_GetNextDispatch(handle, out data, out size);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_AddToDataDefinition(IntPtr handle, uint defineId,
-        [MarshalAs(UnmanagedType.LPStr)] string datumName, [MarshalAs(UnmanagedType.LPStr)] string? unitsName,
-        DataType datumType, float epsilon, uint datumId);
+    public static int SimConnect_AddToDataDefinition(IntPtr handle, uint defineId, string datumName, string? unitsName,
+        DataType datumType, float epsilon, uint datumId) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.AddToDataDefinition(handle, defineId, datumName, unitsName, datumType, epsilon, datumId)
+            : Direct.SimConnect_AddToDataDefinition(handle, defineId, datumName, unitsName, datumType, epsilon, datumId);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_ClearDataDefinition(IntPtr handle, uint defineId);
+    public static int SimConnect_ClearDataDefinition(IntPtr handle, uint defineId) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.ClearDataDefinition(handle, defineId)
+            : Direct.SimConnect_ClearDataDefinition(handle, defineId);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_RequestDataOnSimObject(IntPtr handle, uint requestId, uint defineId,
-        uint objectId, Period period, uint flags, uint origin, uint interval, uint limit);
+    public static int SimConnect_RequestDataOnSimObject(IntPtr handle, uint requestId, uint defineId,
+        uint objectId, Period period, uint flags, uint origin, uint interval, uint limit) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.RequestDataOnSimObject(handle, requestId, defineId, objectId, period, flags, origin, interval, limit)
+            : Direct.SimConnect_RequestDataOnSimObject(handle, requestId, defineId, objectId, period, flags, origin, interval, limit);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_SetDataOnSimObject(IntPtr handle, uint defineId, uint objectId,
-        uint flags, uint arrayCount, uint unitSize, IntPtr data);
+    public static int SimConnect_SetDataOnSimObject(IntPtr handle, uint defineId, uint objectId,
+        uint flags, uint arrayCount, uint unitSize, IntPtr data) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.SetDataOnSimObject(handle, defineId, objectId, flags, arrayCount, unitSize, data)
+            : Direct.SimConnect_SetDataOnSimObject(handle, defineId, objectId, flags, arrayCount, unitSize, data);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_AICreateNonATCAircraft(IntPtr handle,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string containerTitle,
-        [MarshalAs(UnmanagedType.LPStr)] string tailNumber, InitPosition initPos, uint requestId);
+    public static int SimConnect_AICreateNonATCAircraft(IntPtr handle, string containerTitle, string tailNumber,
+        InitPosition initPos, uint requestId) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.AICreateNonATCAircraft(handle, containerTitle, tailNumber, initPos, requestId)
+            : Direct.SimConnect_AICreateNonATCAircraft(handle, containerTitle, tailNumber, initPos, requestId);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_AIRemoveObject(IntPtr handle, uint objectId, uint requestId);
+    public static int SimConnect_AIRemoveObject(IntPtr handle, uint objectId, uint requestId) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.AIRemoveObject(handle, objectId, requestId)
+            : Direct.SimConnect_AIRemoveObject(handle, objectId, requestId);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_AIReleaseControl(IntPtr handle, uint objectId, uint requestId);
+    public static int SimConnect_AIReleaseControl(IntPtr handle, uint objectId, uint requestId) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.AIReleaseControl(handle, objectId, requestId)
+            : Direct.SimConnect_AIReleaseControl(handle, objectId, requestId);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_MapClientEventToSimEvent(IntPtr handle, uint eventId,
-        [MarshalAs(UnmanagedType.LPStr)] string eventName);
+    public static int SimConnect_MapClientEventToSimEvent(IntPtr handle, uint eventId, string eventName) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.MapClientEventToSimEvent(handle, eventId, eventName)
+            : Direct.SimConnect_MapClientEventToSimEvent(handle, eventId, eventName);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_TransmitClientEvent(IntPtr handle, uint objectId, uint eventId,
-        uint data, uint groupId, uint flags);
+    public static int SimConnect_TransmitClientEvent(IntPtr handle, uint objectId, uint eventId,
+        uint data, uint groupId, uint flags) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.TransmitClientEvent(handle, objectId, eventId, data, groupId, flags)
+            : Direct.SimConnect_TransmitClientEvent(handle, objectId, eventId, data, groupId, flags);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_SubscribeToSystemEvent(IntPtr handle, uint eventId,
-        [MarshalAs(UnmanagedType.LPStr)] string systemEventName);
+    public static int SimConnect_SubscribeToSystemEvent(IntPtr handle, uint eventId, string systemEventName) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.SubscribeToSystemEvent(handle, eventId, systemEventName)
+            : Direct.SimConnect_SubscribeToSystemEvent(handle, eventId, systemEventName);
 
-    [DllImport(Dll)]
-    public static extern int SimConnect_GetLastSentPacketID(IntPtr handle, out uint packetId);
+    public static int SimConnect_GetLastSentPacketID(IntPtr handle, out uint packetId) =>
+        SimConnectBridge.Owns(handle)
+            ? SimConnectBridge.GetLastSentPacketID(handle, out packetId)
+            : Direct.SimConnect_GetLastSentPacketID(handle, out packetId);
+
+    /// <summary>随包的 x64 SimConnect.dll（MSFS）。</summary>
+    private static class Direct
+    {
+        [DllImport(Dll, CharSet = CharSet.Ansi)]
+        public static extern int SimConnect_Open(out IntPtr handle, string name, IntPtr hWnd, uint userEventWin32,
+            IntPtr hEventHandle, uint configIndex);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_Close(IntPtr handle);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_GetNextDispatch(IntPtr handle, out IntPtr data, out uint size);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_AddToDataDefinition(IntPtr handle, uint defineId,
+            [MarshalAs(UnmanagedType.LPStr)] string datumName, [MarshalAs(UnmanagedType.LPStr)] string? unitsName,
+            DataType datumType, float epsilon, uint datumId);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_ClearDataDefinition(IntPtr handle, uint defineId);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_RequestDataOnSimObject(IntPtr handle, uint requestId, uint defineId,
+            uint objectId, Period period, uint flags, uint origin, uint interval, uint limit);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_SetDataOnSimObject(IntPtr handle, uint defineId, uint objectId,
+            uint flags, uint arrayCount, uint unitSize, IntPtr data);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_AICreateNonATCAircraft(IntPtr handle,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string containerTitle,
+            [MarshalAs(UnmanagedType.LPStr)] string tailNumber, InitPosition initPos, uint requestId);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_AIRemoveObject(IntPtr handle, uint objectId, uint requestId);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_AIReleaseControl(IntPtr handle, uint objectId, uint requestId);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_MapClientEventToSimEvent(IntPtr handle, uint eventId,
+            [MarshalAs(UnmanagedType.LPStr)] string eventName);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_TransmitClientEvent(IntPtr handle, uint objectId, uint eventId,
+            uint data, uint groupId, uint flags);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_SubscribeToSystemEvent(IntPtr handle, uint eventId,
+            [MarshalAs(UnmanagedType.LPStr)] string systemEventName);
+
+        [DllImport(Dll)]
+        public static extern int SimConnect_GetLastSentPacketID(IntPtr handle, out uint packetId);
+    }
 
     public enum DataType : uint
     {

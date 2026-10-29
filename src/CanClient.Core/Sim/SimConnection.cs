@@ -6,12 +6,15 @@ using static CanClient.Core.Sim.SimConnectNative;
 namespace CanClient.Core.Sim;
 
 /// <summary>
-/// 和 MSFS 的 SimConnect 连接。对应 Python 版 simlink.py，但换成了一条数据定义 + 每个模拟帧推送：
+/// 和 MSFS（或 FSX / P3D）的 SimConnect 连接。对应 Python 版 simlink.py，但换成了一条数据定义 + 每个模拟帧推送：
 /// 原来那个包每个 SimVar 都是一次独立的请求再轮询结果，二十几个串着读一轮要半秒多。
 ///
 /// 一条后台线程负责收消息（SimConnect_Open 时交给它一个事件句柄，有消息就被叫醒）。
 /// 模拟器没开时 Open 直接失败，每 3 秒再试一次；收到 QUIT 或调用失败就关掉重来。
 /// 注入他机（<see cref="TrafficInjector"/>）共用这个句柄，所有调用都过 <see cref="Call"/> 串行化。
+///
+/// <see cref="Legacy"/> 的那一条接 FSX / P3D：经 32 位桥接进程（<see cref="SimConnectBridge"/>）调 FSX 的
+/// SimConnect.dll，其余流程一样。和 vPilot 一样，老模拟器不读应答机状态 / IDENT，调频用 COM_RADIO_SET（BCD）。
 /// </summary>
 public sealed class SimConnection : IDisposable
 {
@@ -27,6 +30,12 @@ public sealed class SimConnection : IDisposable
     private const uint EventCom2SetHz = 101;
     private const uint EventXpndrSet = 102;
     private const uint EventTransponderStateSet = 103;
+
+    /// <summary>MSFS 才有的字段，FSX / P3D 不读（vPilot 也只在 MSFS 上读应答机状态和 IDENT）。</summary>
+    private static readonly HashSet<string> MsfsOnlyFields = ["xpdr", "ident"];
+
+    // 老模拟器连接意外连到 MSFS 时，隔这么久再试（MSFS 由原生连接负责）
+    private static readonly TimeSpan WrongSimulatorBackoff = TimeSpan.FromSeconds(60);
 
     // 判"停着"的地速门槛（节）
     private const int ParkedSpeedKt = 1;
@@ -91,6 +100,23 @@ public sealed class SimConnection : IDisposable
     private List<(string Key, string Name, string Unit)> _activeFields = new();
     private readonly Dictionary<uint, int> _definitionPackets = new();
 
+    private DateTime _retryAfter = DateTime.MinValue;
+
+    /// <param name="legacy">true：接 FSX / P3D（经桥接进程）；false：接 MSFS（直接调 x64 SimConnect.dll）。</param>
+    public SimConnection(bool legacy = false)
+    {
+        Legacy = legacy;
+    }
+
+    /// <summary>这条连接接的是 FSX / P3D。</summary>
+    public bool Legacy { get; }
+
+    /// <summary>界面和日志里怎么称呼这条连接对面的模拟器。</summary>
+    public string Kind => Legacy ? "FSX / P3D" : "MSFS";
+
+    /// <summary>现在要不要尝试连接（比如对应的模拟器进程在不在）。不设就一直试。</summary>
+    public Func<bool>? OpenGate { get; set; }
+
     public SimulatorType Simulator { get; private set; } = SimulatorType.None;
     public string ApplicationName { get; private set; } = "";
     public Version? ApplicationVersion { get; private set; }
@@ -135,6 +161,8 @@ public sealed class SimConnection : IDisposable
             thread.Join(TimeSpan.FromSeconds(3));
         _thread = null;
         CloseHandle();
+        if (Legacy)
+            SimConnectBridge.Shutdown();
     }
 
     public void Dispose() => Stop();
@@ -177,7 +205,7 @@ public sealed class SimConnection : IDisposable
         {
             if (_handle == IntPtr.Zero && !Open())
             {
-                SetState(false, "MSFS 没有运行（等待模拟器启动……）");
+                SetState(false, $"{Kind} 没有运行（等待模拟器启动……）");
                 _stop.Wait(TimeSpan.FromSeconds(RetryInterval));
                 continue;
             }
@@ -187,27 +215,31 @@ public sealed class SimConnection : IDisposable
                 break;
             if (!Pump())
             {
-                SetState(false, "和 MSFS 的连接断了");
+                SetState(false, $"和 {Kind} 的连接断了");
                 CloseHandle();
                 _stop.Wait(TimeSpan.FromSeconds(RetryInterval));
                 continue;
             }
 
             if (_connected && (DateTime.UtcNow - _lastUpdate).TotalSeconds >= StaleAfter)
-                SetState(false, "MSFS 没有数据（是否已进入飞行？）");
+                SetState(false, $"{Kind} 没有数据（是否已进入飞行？）");
         }
         CloseHandle();
     }
 
     private bool Open()
     {
+        if (DateTime.UtcNow < _retryAfter || OpenGate is { } gate && !gate())
+            return false;
         _signal ??= new AutoResetEvent(false);
         int hr;
         IntPtr handle;
         try
         {
-            hr = SimConnect_Open(out handle, AppVersion.ClientName, IntPtr.Zero, 0,
-                _signal.SafeWaitHandle.DangerousGetHandle(), 0);
+            hr = Legacy
+                ? SimConnectBridge.Open(out handle, AppVersion.ClientName, _signal.SafeWaitHandle.DangerousGetHandle())
+                : SimConnect_Open(out handle, AppVersion.ClientName, IntPtr.Zero, 0,
+                    _signal.SafeWaitHandle.DangerousGetHandle(), 0);
         }
         catch (DllNotFoundException e)
         {
@@ -222,7 +254,7 @@ public sealed class SimConnection : IDisposable
         lock (_call)
             _handle = handle;
         Generation++;
-        Log.Info("SimConnect opened, waiting for the simulator to answer");
+        Log.Info($"SimConnect ({Kind}) opened, waiting for the simulator to answer");
         Setup();
         return true;
     }
@@ -233,10 +265,12 @@ public sealed class SimConnection : IDisposable
         Call(h => SimConnect_AddToDataDefinition(h, TitleDefinition, "TITLE", null, DataType.String256, 0, Unused));
         Call(h => SimConnect_RequestDataOnSimObject(h, TitleRequest, TitleDefinition, ObjectIdUser, Period.Second,
             DataRequestFlagChanged, 0, 0, 0));
-        Call(h => SimConnect_MapClientEventToSimEvent(h, EventCom1SetHz, "COM_RADIO_SET_HZ"));
-        Call(h => SimConnect_MapClientEventToSimEvent(h, EventCom2SetHz, "COM2_RADIO_SET_HZ"));
+        // FSX / P3D 没有 *_HZ 和 XPNDR_STATE_SET，调频用 BCD 的 COM_RADIO_SET（vPilot 同）
+        Call(h => SimConnect_MapClientEventToSimEvent(h, EventCom1SetHz, Legacy ? "COM_RADIO_SET" : "COM_RADIO_SET_HZ"));
+        Call(h => SimConnect_MapClientEventToSimEvent(h, EventCom2SetHz, Legacy ? "COM2_RADIO_SET" : "COM2_RADIO_SET_HZ"));
         Call(h => SimConnect_MapClientEventToSimEvent(h, EventXpndrSet, "XPNDR_SET"));
-        Call(h => SimConnect_MapClientEventToSimEvent(h, EventTransponderStateSet, "XPNDR_STATE_SET"));
+        if (!Legacy)
+            Call(h => SimConnect_MapClientEventToSimEvent(h, EventTransponderStateSet, "XPNDR_STATE_SET"));
     }
 
     private void DefineOwnAircraft()
@@ -244,7 +278,9 @@ public sealed class SimConnection : IDisposable
         Call(h => SimConnect_RequestDataOnSimObject(h, OwnRequest, OwnDefinition, ObjectIdUser, Period.Never,
             0, 0, 0, 0));
         Call(h => SimConnect_ClearDataDefinition(h, OwnDefinition));
-        _activeFields = OwnFields.Where(f => !_rejectedFields.Contains(f.Key)).ToList();
+        _activeFields = OwnFields
+            .Where(f => !_rejectedFields.Contains(f.Key) && !(Legacy && MsfsOnlyFields.Contains(f.Key)))
+            .ToList();
         _definitionPackets.Clear();
         for (var i = 0; i < _activeFields.Count; i++)
         {
@@ -333,8 +369,7 @@ public sealed class SimConnection : IDisposable
         switch ((RecvId)header.Id)
         {
             case RecvId.Open:
-                OnOpen(Marshal.PtrToStructure<RecvOpen>(data));
-                return true;
+                return OnOpen(Marshal.PtrToStructure<RecvOpen>(data));
             case RecvId.Quit:
                 Log.Info("the simulator is shutting down (QUIT)");
                 return false;
@@ -377,21 +412,23 @@ public sealed class SimConnection : IDisposable
         }
     }
 
-    private void OnOpen(RecvOpen open)
+    /// <summary>返回 false 表示这条连接不该接这个模拟器，关掉。</summary>
+    private bool OnOpen(RecvOpen open)
     {
         ApplicationName = open.ApplicationName
             .Replace("KittyHawk", "Microsoft Flight Simulator")
             .Replace("SunRise", "Microsoft Flight Simulator 2024");
         ApplicationVersion = new Version((int)open.ApplicationVersionMajor, (int)open.ApplicationVersionMinor,
             (int)open.ApplicationBuildMajor, (int)open.ApplicationBuildMinor);
-        Simulator = SimulatorTypeExtensions.FromApplicationVersion((int)open.ApplicationVersionMajor);
-        if (Simulator == SimulatorType.None)
+        var detected = DetectSimulator(ApplicationVersion, open.ApplicationName, Legacy);
+        if (detected.IsMsfs() == Legacy)
         {
-            // 认不出来的版本按名字猜，猜不出就当 2020
-            Simulator = open.ApplicationName.Contains("SunRise", StringComparison.OrdinalIgnoreCase)
-                ? SimulatorType.Msfs2024
-                : SimulatorType.Msfs;
+            // MSFS 也接受老客户端：两条连接都连上同一个模拟器的话，交给对口的那一条
+            Log.Info($"the {Kind} connection reached {ApplicationName} {ApplicationVersion}, leaving it to the other connection");
+            _retryAfter = DateTime.UtcNow + WrongSimulatorBackoff;
+            return false;
         }
+        Simulator = detected;
         Log.Info($"connected to {ApplicationName} {ApplicationVersion} ({Simulator}), SimConnect {open.SimConnectVersionMajor}.{open.SimConnectVersionMinor}");
         try
         {
@@ -401,6 +438,32 @@ public sealed class SimConnection : IDisposable
         {
             Log.Warning($"open callback raised: {e.Message}");
         }
+        return true;
+    }
+
+    /// <summary>
+    /// 按 OPEN 里的程序版本认模拟器（vPilot Method_06000668）。FSX 的 Steam 版看构建号，没装 Steam 版
+    /// 却装了盒装 FSX 的当盒装（vPilot 同）。认不出来的版本：MSFS 连接按名字猜，猜不出就当 2020；
+    /// 老连接按名字分 FSX / P3D。
+    /// </summary>
+    internal static SimulatorType DetectSimulator(Version version, string applicationName, bool legacy)
+    {
+        var simulator = SimulatorTypeExtensions.FromApplicationVersion(version.Major, version.Build);
+        if (simulator == SimulatorType.FsxSe)
+        {
+            var installed = SimulatorInstallations.Installed();
+            if (!installed.Contains(SimulatorType.FsxSe) && installed.Contains(SimulatorType.Fsx))
+                simulator = SimulatorType.Fsx;
+        }
+        if (simulator != SimulatorType.None)
+            return simulator;
+        if (legacy)
+            return applicationName.Contains("Prepar3D", StringComparison.OrdinalIgnoreCase)
+                ? SimulatorType.Prepar3dV6
+                : SimulatorType.Fsx;
+        return applicationName.Contains("SunRise", StringComparison.OrdinalIgnoreCase)
+            ? SimulatorType.Msfs2024
+            : SimulatorType.Msfs;
     }
 
     private void OnException(RecvException body)
@@ -598,10 +661,24 @@ public sealed class SimConnection : IDisposable
     /// <summary>调 COM1 / COM2 的有效频率。</summary>
     public bool TuneCom(int radio, double frequencyMhz)
     {
-        var hz = (uint)Math.Round(frequencyMhz * 1_000_000);
+        var value = Legacy ? ComBcd(frequencyMhz) : (uint)Math.Round(frequencyMhz * 1_000_000);
         var eventId = radio == 2 ? EventCom2SetHz : EventCom1SetHz;
-        return Call(h => SimConnect_TransmitClientEvent(h, ObjectIdUser, eventId, hz, GroupPriorityHighest,
+        return Call(h => SimConnect_TransmitClientEvent(h, ObjectIdUser, eventId, value, GroupPriorityHighest,
             EventFlagGroupIdIsPriority)) >= 0;
+    }
+
+    /// <summary>
+    /// FSX / P3D 的 COM_RADIO_SET 要 BCD16：去掉开头的 1 和最后一位，122.800 → 0x2280，118.025 → 0x1802
+    /// （vPilot Method_060005AA）。最后一位由模拟器按 25 kHz 间隔补上。
+    /// </summary>
+    public static uint ComBcd(double frequencyMhz)
+    {
+        var digits = (int)Math.Floor((Math.Round(frequencyMhz * 1000) - 100_000) / 10.0);
+        digits = Math.Clamp(digits, 0, 9999);
+        var bcd = 0u;
+        foreach (var c in digits.ToString("D4"))
+            bcd = (bcd << 4) | (uint)(c - '0');
+        return bcd;
     }
 
     /// <summary>设应答机编码（BCD16）。</summary>
@@ -618,6 +695,8 @@ public sealed class SimConnection : IDisposable
     /// <summary>设应答机状态：1 待机、4 高度。老版本模拟器没有这个事件就算了。</summary>
     public bool SetTransponderState(TransponderMode mode)
     {
+        if (Legacy)
+            return false;
         var state = mode == TransponderMode.ModeC ? 4u : 1u;
         return Call(h => SimConnect_TransmitClientEvent(h, ObjectIdUser, EventTransponderStateSet, state,
             GroupPriorityHighest, EventFlagGroupIdIsPriority)) >= 0;

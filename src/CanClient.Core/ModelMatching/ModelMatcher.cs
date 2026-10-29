@@ -245,7 +245,13 @@ public sealed class ModelMatcher
             });
         }
 
-        var builtIn = Simulator == SimulatorType.Msfs2024 ? BuiltInRules.Msfs2024 : BuiltInRules.Msfs2020;
+        // FSX / P3D 没有内置规则（vPilot 也一样），全靠扫描出来的模型
+        var builtIn = Simulator switch
+        {
+            SimulatorType.Msfs2024 => BuiltInRules.Msfs2024,
+            _ when Simulator.IsLegacy() => [],
+            _ => BuiltInRules.Msfs2020
+        };
         foreach (var (typeCode, modelName) in builtIn)
         {
             generated.Add(new ModelMatchRule

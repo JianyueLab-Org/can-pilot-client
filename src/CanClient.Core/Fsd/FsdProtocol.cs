@@ -39,7 +39,10 @@ public static class FsdProtocol
     public const int ClientMajor = 1;
     public const int ClientMinor = 0;
 
-    // 模拟器编号，取自 can-fsd 的 docs/enumerations.md。
+    // 模拟器编号，取自 can-fsd 的 docs/enumerations.md。FSX 和 P3D 和 VATSIM 的取值一致（swift 的 FSD 实现：
+    // MSFSX = 9，P3D 各版本都报 30）。
+    public const int SimulatorFsx = 9;
+    public const int SimulatorP3d = 30;
     public const int SimulatorMsfs2020 = 10;
     public const int SimulatorMsfs2024 = 11;
     public const int SimulatorXPlane = 16;
