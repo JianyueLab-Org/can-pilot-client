@@ -38,7 +38,10 @@ for f in "$arm64"/*; do
 done
 
 # 图标：从 app.ico 同源的 64 px PNG 放大生成（Dock 上略糊，但比没有强）
-iconset="$(mktemp -d)/app.iconset"
+# 中间目录是 mktemp -d 出来的，成功或失败都要收走，别在 /tmp 里越攒越多
+scratch=$(mktemp -d)
+trap 'rm -rf -- "$scratch"' EXIT
+iconset="$scratch/app.iconset"
 mkdir -p "$iconset"
 for size in 16 32 64 128 256 512; do
   sips -z "$size" "$size" "$root/src/CanClient/app-logo.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
