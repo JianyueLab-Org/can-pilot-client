@@ -202,6 +202,9 @@ internal static class SimulatorProcesses
         }
     }
 
+    /// <summary>X-Plane 主程序：Windows / macOS 是 X-Plane，Linux 是 X-Plane-x86_64。不缓存，只在用户点按钮时问。</summary>
+    public static bool XPlaneRunning => Running("X-Plane") || Running("X-Plane-x86_64");
+
     private static void Refresh()
     {
         lock (Lock)

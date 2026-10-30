@@ -143,6 +143,14 @@ public class ScreenTests(ITestOutputHelper output)
         var window = new SettingsWindow { DataContext = settings };
         window.Show();
         var menu = window.FindControl<ListBox>("Menu")!;
+        Dispatcher.UIThread.RunJobs();
+        // 菜单上真的隐藏了，不只是 ViewModel 算对了：虚拟化面板实现容器时会把 IsVisible 设回 true、冲掉绑定
+        bool Shown(string tag) => menu.Items.OfType<ListBoxItem>().Single(i => (string?)i.Tag == tag).IsVisible;
+        Assert.Equal(detected2020, Shown("Msfs2020"));
+        Assert.Equal(detected2024, Shown("Msfs2024"));
+        Assert.Equal(detectedLegacy,
+            new[] { "Fsx", "FsxSe", "Prepar3d", "Prepar3dV2", "Prepar3dV3", "Prepar3dV4", "Prepar3dV5", "Prepar3dV6" }.Select(Shown).ToArray());
+        Assert.Equal(detectedXp, Shown("Simulator"));
         settings.ShowAllSimulators = true;
         string[] names = ["network", "notifications", "fonts", "audio", "ptt", "simulator-general", "msfs2020", "msfs2024", "fsx", "fsxse",
             "p3dv1", "p3dv2", "p3dv3", "p3dv4", "p3dv5", "p3dv6", "advanced", "rules", "simulator", "performance", "updates", "misc", "information"];

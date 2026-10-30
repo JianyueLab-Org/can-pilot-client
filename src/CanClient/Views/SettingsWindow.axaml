@@ -32,6 +32,13 @@
       <!-- 左侧菜单（vPilot TreeMenu：模型匹配下含“高级”“自定义规则”两个子项） -->
       <Border Classes="sidebar" Padding="0,8">
         <ListBox x:Name="Menu" SelectionChanged="OnMenuSelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <!-- 不能用默认的 VirtualizingStackPanel：它实现容器时会把 IsVisible 直接设回 true，冲掉下面各项的绑定，
+               未安装的模拟器页面就又显示出来了。菜单项是固定的二十几个，不需要虚拟化。 -->
+          <ListBox.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel />
+            </ItemsPanelTemplate>
+          </ListBox.ItemsPanel>
           <ListBox.Styles>
             <Style Selector="ListBoxItem">
               <Setter Property="Theme" Value="{DynamicResource NavItemTheme}" />

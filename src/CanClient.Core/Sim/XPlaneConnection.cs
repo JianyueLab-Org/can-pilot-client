@@ -53,6 +53,29 @@ public sealed class XPlaneConnection(AppSettings settings) : IDisposable
     public string Address => _address?.ToString() ?? "等待发现 X-Plane";
     public bool Connected => Snapshot() is not null;
 
+    /// <summary>发现了 X-Plane 却收不到数据时给用户看的原因；收到数据或 X-Plane 不在了就清掉。</summary>
+    public string? Problem { get; private set; }
+    public event Action<string?>? ProblemChanged;
+
+    private void SetProblem(string? problem)
+    {
+        if (Problem == problem) return;
+        Problem = problem;
+        if (problem is not null) Log.Warning(problem);
+        ProblemChanged?.Invoke(problem);
+    }
+
+    /// <summary>信标到了、订阅没回包：几乎都是 X-Plane 12 默认关着的“接受传入连接”，prf 里能确认时说得更肯定。</summary>
+    internal static string SilentProblem(bool? incomingDisabled) => incomingDisabled == true
+        ? "X-Plane 关闭了“接受传入连接”，客户端收不到机位数据。请在 X-Plane 设置 → 网络（Network）中打开 Accept incoming connections；或者退出 X-Plane，在本客户端 设置 → X-Plane 中点“开启 X-Plane 网络连接”。"
+        : "已发现 X-Plane，但它不回应数据请求。请确认 X-Plane 设置 → 网络（Network）中的 Accept incoming connections（接受传入连接）已打开，并检查防火墙是否拦截了 X-Plane 的 UDP。";
+
+    private bool? IncomingDisabled()
+    {
+        var states = XPlaneInstallation.Roots(settings.XPlanePath).Select(XPlaneInstallation.IncomingNetworkingDisabled).ToArray();
+        return states.Contains(true) ? true : states.Contains(false) ? false : null;
+    }
+
     private static bool PositionFresh(IReadOnlyDictionary<string, DateTime> updated, DateTime now) =>
         new[] { "lat", "lon", "elevation" }.All(key => updated.TryGetValue(key, out var time) && now - time < TimeSpan.FromSeconds(3));
     private readonly Dictionary<string, DateTime> _updated = new();
@@ -176,6 +199,7 @@ public sealed class XPlaneConnection(AppSettings settings) : IDisposable
                         silent = DateTime.UtcNow;
                         if (receiving) continue;
                         receiving = true;
+                        SetProblem(null);
                         var state = $"ok {packet.RemoteEndPoint}";
                         if (reported != state)
                             Log.Info($"receiving datarefs from {packet.RemoteEndPoint} (subscribed at {address} via {source})");
@@ -191,6 +215,8 @@ public sealed class XPlaneConnection(AppSettings settings) : IDisposable
                     Log.Info($"no RREF reply from {address} (via {source}) for 10 s; X-Plane not running, or its network/firewall is blocking UDP");
                 reported = silence;
                 if (source == "beacon") silentBeacon = address;
+                // 有信标说明 X-Plane 开着；没信标、也没回包就是没开，不算问题
+                SetProblem(source is "beacon" or "loopback retry" ? SilentProblem(IncomingDisabled()) : null);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
             catch (Exception e) { Log.Warning($"X-Plane connection: {e.Message}"); }

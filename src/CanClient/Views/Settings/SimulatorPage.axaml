@@ -17,6 +17,8 @@
       <Button Content="安装 / 更新交通插件" Command="{Binding InstallXPlanePluginCommand}" />
     </StackPanel>
     <TextBlock Classes="caption" Text="{Binding XPlaneStatus}" TextWrapping="Wrap" />
+    <Button Content="开启 X-Plane 网络连接" Command="{Binding EnableXPlaneNetworkCommand}" IsVisible="{Binding CanEnableXPlaneNetwork}" />
+    <TextBlock Classes="caption" Text="{Binding XPlaneNetworkStatus}" TextWrapping="Wrap" IsVisible="{Binding XPlaneNetworkStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
     <TextBlock Classes="label" Text="CSL 模型库目录（X-CSL / xPilot / LiveTraffic）" />
     <TextBox Text="{Binding CslPath}" />
     <StackPanel Orientation="Horizontal" Spacing="8">
