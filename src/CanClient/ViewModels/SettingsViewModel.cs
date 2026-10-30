@@ -77,6 +77,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         nameof(LastModelScan), nameof(ModelsFound), nameof(ScanProgressText), nameof(IsScanning), nameof(MatchTestResult),
         nameof(MatchTestCallsign), nameof(MatchTestType), nameof(ServerStatus), nameof(SimulatorName), nameof(PackagesInfo),
         nameof(DataInfo), nameof(SoundVolumeText), nameof(XPlaneStatus), nameof(CslStatus), nameof(CanChangeSimulator),
+        nameof(XPlaneNetworkStatus), nameof(CanEnableXPlaneNetwork),
         nameof(ShowMsfs2020), nameof(ShowMsfs2024), nameof(ShowModelMatching), nameof(ShowXPlane), nameof(ShowFsx), nameof(ShowFsxSe),
         nameof(ShowP3dV1), nameof(ShowP3dV2), nameof(ShowP3dV3), nameof(ShowP3dV4), nameof(ShowP3dV5), nameof(ShowP3dV6),
         nameof(SimulatorConnections), nameof(PackagesPathLabel), nameof(PackagesPathPlaceholder), nameof(PttBindings),
@@ -418,10 +419,39 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private string _xPlaneStatus = "";
     [ObservableProperty] private string _cslStatus = "";
 
+    [ObservableProperty] private string _xPlaneNetworkStatus = "";
+    [ObservableProperty] private bool _canEnableXPlaneNetwork;
+
     private void RefreshXPlaneInfo()
     {
         XPlaneStatus = XPlaneInstallation.IsXPlane(XPlanePath) ? "已找到 X-Plane 安装目录" : "尚未选择 X-Plane 安装目录";
         CslStatus = string.IsNullOrWhiteSpace(CslPath) ? "尚未选择 CSL 模型库" : "CSL 目录：" + CslPath;
+        RefreshXPlaneNetwork();
+    }
+
+    /// <summary>X-Plane 12 新装默认关着“接受传入连接”，关着时客户端收不到任何机位数据。</summary>
+    private string[] XPlaneRootsWithNetworkingOff() =>
+        XPlaneInstallation.Roots(XPlanePath).Where(root => XPlaneInstallation.IncomingNetworkingDisabled(root) == true).ToArray();
+
+    private void RefreshXPlaneNetwork()
+    {
+        CanEnableXPlaneNetwork = XPlaneRootsWithNetworkingOff().Length > 0;
+        XPlaneNetworkStatus = CanEnableXPlaneNetwork
+            ? "X-Plane 的“接受传入连接”（设置 → 网络 → Accept incoming connections）是关着的，客户端收不到机位数据。请在 X-Plane 里打开，或退出 X-Plane 后点“开启 X-Plane 网络连接”。"
+            : "";
+    }
+
+    [RelayCommand]
+    private async Task EnableXPlaneNetworkAsync()
+    {
+        try
+        {
+            var roots = XPlaneRootsWithNetworkingOff();
+            await Task.Run(() => { foreach (var root in roots) XPlaneInstallation.EnableIncomingNetworking(root); });
+            RefreshXPlaneNetwork();
+            if (!CanEnableXPlaneNetwork) XPlaneNetworkStatus = "已开启 X-Plane 的“接受传入连接”，启动 X-Plane 后客户端会自动连接。";
+        }
+        catch (Exception e) { XPlaneNetworkStatus = "开启失败：" + e.Message; }
     }
 
     [RelayCommand]
@@ -453,6 +483,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         {
             await Task.Run(() => XPlaneInstallation.InstallPlugin(XPlanePath));
             XPlaneStatus = "XPC_for_CAN 插件安装完成，请重启 X-Plane。";
+            RefreshXPlaneNetwork();
         }
         catch (Exception e) { XPlaneStatus = "安装失败：" + e.Message; }
     }

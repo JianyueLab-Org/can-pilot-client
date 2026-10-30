@@ -59,6 +59,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             RefreshConnectionStatus();
         });
         controller.SimStateChanged += (connected, _) => Ui(() => SimConnected = connected);
+        controller.Sim.XPlane.ProblemChanged += problem => Ui(() =>
+        {
+            XPlaneProblem = problem;
+            if (problem is not null) AddSystem(problem);
+        });
         controller.AttentionRequested += reason => Ui(() => AttentionRequested?.Invoke(reason));
         controller.Models.ScanProgressChanged += p => Ui(() => ScanStatus = p.Stage);
         controller.Models.ScanCompleted += _ => Ui(() => ScanStatus = "");
@@ -137,9 +142,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(StatusText))]
     private string _scanStatus = "";
 
+    /// <summary>发现了 X-Plane 但收不到数据的原因，完整说明同时发在消息区。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusText))]
+    private string? _xPlaneProblem;
+
     /// <summary>呼号旁边那行小字：模型扫描进度优先，其次是模拟器连没连上。</summary>
     public string StatusText => ScanStatus.Length > 0 ? ScanStatus
-        : SimConnected ? $"{_controller.Sim.ApplicationName}" : "等待模拟器";
+        : SimConnected ? $"{_controller.Sim.ApplicationName}"
+        : XPlaneProblem is not null ? "X-Plane 未开放网络连接（见消息）" : "等待模拟器";
     [ObservableProperty] private string _windowTitle = $"{AppVersion.ClientName} {AppVersion.Display}";
 
     private bool _suppressModeC;
