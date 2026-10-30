@@ -37,6 +37,11 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
 {
     private readonly ClientController _controller;
     private readonly AppSettings _settings;
+    /// <summary>
+    /// 设置页正在看的那套模型匹配。默认就是他机注入用的那套；连着模拟器时去看别的模拟器的页面，
+    /// 换成一个独立副本，免得把注入用的规则换成别的模拟器的（那样所有他机都建不出来）。
+    /// </summary>
+    private ModelMatchingService _models;
     private bool _loading = true;
     private bool _meterOn;
     private bool _scanDirty;
@@ -50,6 +55,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         ConnectionInfo = connectionInfo;
         _controller = controller;
         _settings = controller.Settings;
+        _models = controller.Models;
         CustomRuleSets.CollectionChanged += (_, _) =>
         {
             if (_loading)
@@ -59,8 +65,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         };
         Load();
         _loading = false;
-        controller.Models.ScanProgressChanged += OnScanProgress;
-        controller.Models.ScanCompleted += OnScanCompleted;
+        _models.ScanProgressChanged += OnScanProgress;
+        _models.ScanCompleted += OnScanCompleted;
         _ = RefreshServersAsync();
         RefreshXPlaneInfo();
         RefreshSimulatorVisibility();
@@ -149,13 +155,13 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         DebugLog = _settings.Debug;
 
         PackagesPath = _settings.PackagesPath;
-        DefaultModel = _controller.Models.DefaultModel;
+        DefaultModel = _models.DefaultModel;
         LoadModelMatching();
     }
 
     private void LoadModelMatching()
     {
-        var models = _controller.Models;
+        var models = _models;
         var simulator = models.Simulator;
         var folderName = ModelMatchingService.ModelFolderName(simulator);
         SimulatorName = simulator.DisplayName();
@@ -189,7 +195,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
 
     private RuleSetItem DescribeRuleSet(string path)
     {
-        var status = _controller.Models.Matcher.RuleSetStatus.FirstOrDefault(s => s.Path == path);
+        var status = _models.Matcher.RuleSetStatus.FirstOrDefault(s => s.Path == path);
         var package = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(path)) ?? "";
         var detail = status is null ? "" : status.Error is null ? $"{status.RuleCount:N0} 条规则" : $"读取失败：{status.Error}";
         return new RuleSetItem(path, $"{System.IO.Path.GetFileName(path)}  ·  {package}  {detail}");
@@ -197,13 +203,13 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
 
     private void UpdateScanSummary()
     {
-        var scan = _controller.Models.ScanResult;
+        var scan = _models.ScanResult;
         LastModelScan = scan is null ? "从未扫描" : scan.ScannedOn.ToString("yyyy 年 M 月 d 日 HH:mm");
         ModelsFound = scan is null
             ? "—"
             : $"找到 {scan.ModelCount:N0} 个模型，已识别 {scan.IdentifiedModelCount:N0} 个（{scan.Folders.Count} 个包）";
-        IsScanning = _controller.Models.Scanning;
-        ScanProgressText = _controller.Models.Progress?.Stage ?? "";
+        IsScanning = _models.Scanning;
+        ScanProgressText = _models.Progress?.Stage ?? "";
     }
 
     private void OnScanProgress(ScanProgress progress) => Dispatcher.UIThread.Post(() =>
@@ -273,14 +279,14 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         Core.Util.Log.Level = DebugLog || Program.Debug ? Core.Util.LogLevel.Debug : Core.Util.LogLevel.Info;
 
         // 模型目录是按模拟器各存一份的：当前页面属于哪个模拟器就写到哪个
-        var simulator = _controller.Models.Simulator;
+        var simulator = _models.Simulator;
         var packagesChanged = simulator.UsesSimConnect() && (PackagesPath ?? "").Trim() != _settings.SimulatorPathFor(simulator);
         if (packagesChanged)
             _settings.SetSimulatorPath(simulator, PackagesPath ?? "");
         _settings.Save();
         _controller.ApplyAudioSettings();
 
-        var models = _controller.Models;
+        var models = _models;
         if ((DefaultModel ?? "").Trim() != models.DefaultModel)
             models.DefaultModel = (DefaultModel ?? "").Trim();
         if (_scanDirty && models.ScanResult is { } scan)
@@ -404,7 +410,19 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     {
         // 切换模型配置前保存当前页面，防止另一模拟器的规则/目录被覆盖。
         if (IsDirty) Apply();
-        await _controller.Models.SetSimulatorAsync(simulator);
+        var live = _controller.Sim.Simulator;
+        var models = live.UsesSimConnect() && simulator != live
+            ? _models != _controller.Models ? _models : _controller.Models.CreateDetached()
+            : _controller.Models;
+        if (models != _models)
+        {
+            _models.ScanProgressChanged -= OnScanProgress;
+            _models.ScanCompleted -= OnScanCompleted;
+            _models = models;
+            _models.ScanProgressChanged += OnScanProgress;
+            _models.ScanCompleted += OnScanCompleted;
+        }
+        await _models.SetSimulatorAsync(simulator);
         var loading = _loading;
         _loading = true;
         LoadModelMatching();
@@ -755,19 +773,19 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     {
         IsScanning = true;
         ScanProgressText = "正在查找 SimObjects 文件夹……";
-        _ = _controller.Models.RescanAsync();
+        _ = _models.RescanAsync();
     }
 
     [RelayCommand]
-    private void ResetDefaultModel() => DefaultModel = _controller.Models.Simulator.DefaultModel();
+    private void ResetDefaultModel() => DefaultModel = _models.Simulator.DefaultModel();
 
     [RelayCommand]
     private void TestMatch()
     {
         if (string.IsNullOrWhiteSpace(MatchTestCallsign))
             return;
-        var result = _controller.Models.Match(MatchTestCallsign, MatchTestType);
-        var installed = result.IsDefault || _controller.Models.Matcher.IsInstalled(result.ModelName) ? "" : "（未在扫描结果中）";
+        var result = _models.Match(MatchTestCallsign, MatchTestType);
+        var installed = result.IsDefault || _models.Matcher.IsInstalled(result.ModelName) ? "" : "（未在扫描结果中）";
         MatchTestResult = $"→ {result.ModelName}{installed}\n   {result.Description} · 来源：{result.Source}" +
                           (result.Rule is null ? "" : $" · 规则：{result.Rule}");
     }
@@ -875,8 +893,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         SetMeter(false);
         if (IsWaitingForPtt)
             _controller.Ptt.CancelCapture();
-        _controller.Models.ScanProgressChanged -= OnScanProgress;
-        _controller.Models.ScanCompleted -= OnScanCompleted;
+        _models.ScanProgressChanged -= OnScanProgress;
+        _models.ScanCompleted -= OnScanCompleted;
     }
 }
 
