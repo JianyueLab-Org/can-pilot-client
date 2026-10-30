@@ -539,10 +539,10 @@ public sealed class SimConnection : IDisposable
         }
         if (raw.Count == 0 || (DateTime.UtcNow - last).TotalSeconds >= StaleAfter)
             return null;
-        return BuildState(raw, _title);
+        return BuildState(raw, _title, Legacy);
     }
 
-    internal static OwnAircraftState BuildState(IReadOnlyDictionary<string, double> raw, string title)
+    internal static OwnAircraftState BuildState(IReadOnlyDictionary<string, double> raw, string title, bool legacy = false)
     {
         double Get(string key, double fallback = 0) => raw.TryGetValue(key, out var v) ? v : fallback;
         double? Maybe(string key) => raw.TryGetValue(key, out var v) ? v : null;
@@ -580,9 +580,12 @@ public sealed class SimConnection : IDisposable
             Com1 = Frequency(Maybe("com1")),
             Com2 = Frequency(Maybe("com2")),
             Com1Power = Get("com1power") == 0,
-            Com1Receiving = Get("com1rx", 1) != 0,
+            // FSX/P3D reports COM RECEIVE inconsistently (and can leave it at 0 even
+            // while the radio is usable). Voice follows the Mumble frequency channel
+            // there, so do not let that legacy-only SimVar disable RX completely.
+            Com1Receiving = legacy || Get("com1rx", 1) != 0,
             Com2Power = Get("com2power") == 0,
-            Com2Receiving = Get("com2rx", 1) != 0,
+            Com2Receiving = legacy || Get("com2rx", 1) != 0,
             TransmitRadio = SelectTransmitRadio(Get("com1tx", 1) != 0, Get("com2tx") != 0),
             OnGround = onGround,
             VelocityEast = Get("vx"),

@@ -744,14 +744,13 @@ public sealed class VoiceSession : IDisposable
         if (connection.User(session)?.Name is { } cid && _rangePolicy.TryGetValue(cid, out var allow) && !allow)
             return;
         bool com1, com2;
-        var senderChannel = connection.User(session)?.ChannelId;
         lock (_listenerLock)
         {
-            // 普通语音按发送者频道归属；whisper 的发送者可以在其他频道，用包上下文判断目标。
+            // Mumble 服务器已经按频道和 listener 权限过滤了下发的语音。不要再用本地
+            // UserState 里的发送者频道做二次过滤：UserState 是增量同步的，刚收到语音时
+            // 可能还没有该用户的频道状态，或者状态仍是旧频道，这会把有效 RX 包静默丢掉。
+            // 普通语音属于当前 TX 频道；context=3 则是通过频道监听器收到的语音。
             var channel = context == 3 ? _pendingListener : Frequency;
-            var channelId = channel is { } f ? connection.FindChannel(ChannelName(f))?.Id : null;
-            if (context is 0 or 3 && senderChannel is { } id && id != channelId)
-                return;
             com1 = _com1Receive && _com1 is not null && channel == _com1;
             com2 = _com2Receive && _com2 is not null && channel == _com2;
         }
