@@ -150,7 +150,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// <summary>呼号旁边那行小字：模型扫描进度优先，其次是模拟器连没连上。</summary>
     public string StatusText => ScanStatus.Length > 0 ? ScanStatus
         : SimConnected ? $"{_controller.Sim.ApplicationName}"
-        : XPlaneProblem is not null ? "X-Plane 未开放网络连接（见消息）" : "等待模拟器";
+        : XPlaneProblem is not null ? "X-Plane 没有数据（见消息）" : "等待模拟器";
     [ObservableProperty] private string _windowTitle = $"{AppVersion.ClientName} {AppVersion.Display}";
 
     private bool _suppressModeC;
