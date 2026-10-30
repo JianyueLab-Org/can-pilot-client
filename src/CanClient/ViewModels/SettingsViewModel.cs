@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Text.Json.Nodes;
 using Avalonia.Media;
 using Avalonia.Threading;
 using CanClient.Core;
@@ -37,6 +38,11 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
 {
     private readonly ClientController _controller;
     private readonly AppSettings _settings;
+    /// <summary>
+    /// 设置页正在看的那套模型匹配。默认就是他机注入用的那套；连着模拟器时去看别的模拟器的页面，
+    /// 换成一个独立副本，免得把注入用的规则换成别的模拟器的（那样所有他机都建不出来）。
+    /// </summary>
+    private ModelMatchingService _models;
     private bool _loading = true;
     private bool _meterOn;
     private bool _scanDirty;
@@ -50,6 +56,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         ConnectionInfo = connectionInfo;
         _controller = controller;
         _settings = controller.Settings;
+        _models = controller.Models;
         CustomRuleSets.CollectionChanged += (_, _) =>
         {
             if (_loading)
@@ -59,8 +66,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         };
         Load();
         _loading = false;
-        controller.Models.ScanProgressChanged += OnScanProgress;
-        controller.Models.ScanCompleted += OnScanCompleted;
+        _models.ScanProgressChanged += OnScanProgress;
+        _models.ScanCompleted += OnScanCompleted;
         _ = RefreshServersAsync();
         RefreshXPlaneInfo();
         RefreshSimulatorVisibility();
@@ -81,7 +88,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         nameof(ShowMsfs2020), nameof(ShowMsfs2024), nameof(ShowModelMatching), nameof(ShowXPlane), nameof(ShowFsx), nameof(ShowFsxSe),
         nameof(ShowP3dV1), nameof(ShowP3dV2), nameof(ShowP3dV3), nameof(ShowP3dV4), nameof(ShowP3dV5), nameof(ShowP3dV6),
         nameof(SimulatorConnections), nameof(PackagesPathLabel), nameof(PackagesPathPlaceholder), nameof(PttBindings),
-        nameof(SelectedPttBinding), nameof(CanRemovePtt)
+        nameof(SelectedPttBinding), nameof(CanRemovePtt), nameof(IsCalibrating), nameof(CalibrationStatus),
+        nameof(CalibrationFailed), nameof(CalibrateButtonText)
     ];
 
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
@@ -149,13 +157,13 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         DebugLog = _settings.Debug;
 
         PackagesPath = _settings.PackagesPath;
-        DefaultModel = _controller.Models.DefaultModel;
+        DefaultModel = _models.DefaultModel;
         LoadModelMatching();
     }
 
     private void LoadModelMatching()
     {
-        var models = _controller.Models;
+        var models = _models;
         var simulator = models.Simulator;
         var folderName = ModelMatchingService.ModelFolderName(simulator);
         SimulatorName = simulator.DisplayName();
@@ -189,7 +197,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
 
     private RuleSetItem DescribeRuleSet(string path)
     {
-        var status = _controller.Models.Matcher.RuleSetStatus.FirstOrDefault(s => s.Path == path);
+        var status = _models.Matcher.RuleSetStatus.FirstOrDefault(s => s.Path == path);
         var package = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(path)) ?? "";
         var detail = status is null ? "" : status.Error is null ? $"{status.RuleCount:N0} 条规则" : $"读取失败：{status.Error}";
         return new RuleSetItem(path, $"{System.IO.Path.GetFileName(path)}  ·  {package}  {detail}");
@@ -197,13 +205,13 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
 
     private void UpdateScanSummary()
     {
-        var scan = _controller.Models.ScanResult;
+        var scan = _models.ScanResult;
         LastModelScan = scan is null ? "从未扫描" : scan.ScannedOn.ToString("yyyy 年 M 月 d 日 HH:mm");
         ModelsFound = scan is null
             ? "—"
             : $"找到 {scan.ModelCount:N0} 个模型，已识别 {scan.IdentifiedModelCount:N0} 个（{scan.Folders.Count} 个包）";
-        IsScanning = _controller.Models.Scanning;
-        ScanProgressText = _controller.Models.Progress?.Stage ?? "";
+        IsScanning = _models.Scanning;
+        ScanProgressText = _models.Progress?.Stage ?? "";
     }
 
     private void OnScanProgress(ScanProgress progress) => Dispatcher.UIThread.Post(() =>
@@ -261,6 +269,9 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         _settings.RangeAudio = RangeAudio;
         _settings.OutputGainDb = OutputVolumeDb;
         _settings.MicGainDb = InputVolumeDb;
+        foreach (var (device, entry) in _pendingCalibrations)
+            _settings.MicCalibration[device] = entry;
+        _pendingCalibrations.Clear();
         _settings.PttBindings = _bindings.ToList();
 
         _settings.RenderTraffic = RenderTraffic;
@@ -273,14 +284,14 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         Core.Util.Log.Level = DebugLog || Program.Debug ? Core.Util.LogLevel.Debug : Core.Util.LogLevel.Info;
 
         // 模型目录是按模拟器各存一份的：当前页面属于哪个模拟器就写到哪个
-        var simulator = _controller.Models.Simulator;
+        var simulator = _models.Simulator;
         var packagesChanged = simulator.UsesSimConnect() && (PackagesPath ?? "").Trim() != _settings.SimulatorPathFor(simulator);
         if (packagesChanged)
             _settings.SetSimulatorPath(simulator, PackagesPath ?? "");
         _settings.Save();
         _controller.ApplyAudioSettings();
 
-        var models = _controller.Models;
+        var models = _models;
         if ((DefaultModel ?? "").Trim() != models.DefaultModel)
             models.DefaultModel = (DefaultModel ?? "").Trim();
         if (_scanDirty && models.ScanResult is { } scan)
@@ -404,7 +415,19 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     {
         // 切换模型配置前保存当前页面，防止另一模拟器的规则/目录被覆盖。
         if (IsDirty) Apply();
-        await _controller.Models.SetSimulatorAsync(simulator);
+        var live = _controller.Sim.Simulator;
+        var models = live.UsesSimConnect() && simulator != live
+            ? _models != _controller.Models ? _models : _controller.Models.CreateDetached()
+            : _controller.Models;
+        if (models != _models)
+        {
+            _models.ScanProgressChanged -= OnScanProgress;
+            _models.ScanCompleted -= OnScanCompleted;
+            _models = models;
+            _models.ScanProgressChanged += OnScanProgress;
+            _models.ScanCompleted += OnScanCompleted;
+        }
+        await _models.SetSimulatorAsync(simulator);
         var loading = _loading;
         _loading = true;
         LoadModelMatching();
@@ -640,6 +663,11 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         }
         else
         {
+            if (IsCalibrating)
+            {
+                CancelCalibration();
+                CalibrationStatus = "";
+            }
             audio.FrameCaptured -= OnMeterFrame;
             audio.ReleaseCapture();
             InputLevel = 0;
@@ -648,12 +676,136 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
 
     partial void OnInputDeviceNameChanged(string? value)
     {
+        CancelCalibration();
         if (_meterOn)
             _controller.Audio.ChangeInput(value == AudioDevices.SystemDefault ? "" : value ?? "");
+        AdoptCalibration();
     }
+
+    partial void OnMicDenoiseChanged(bool value)
+    {
+        CancelCalibration();
+        AdoptCalibration();
+    }
+
+    // —— 麦克风音量自动校准（Python 版 calibration.py）：静音 1 秒测底噪，再朗读 8 秒，算出增益填进滑块 ——
+    private MicCalibrator? _calibrator;
+    /// <summary>校准出来、还没"应用"的记录：设备名（空串是系统默认）→ mic_calibration 条目。</summary>
+    private readonly Dictionary<string, JsonObject> _pendingCalibrations = new();
+
+    public string CalibrationPhrase => MicCalibration.Phrase;
+    [ObservableProperty] private bool _isCalibrating;
+    [ObservableProperty] private string _calibrationStatus = "";
+    [ObservableProperty] private bool _calibrationFailed;
+    public string CalibrateButtonText => IsCalibrating ? "取消校准" : "自动校准麦克风音量";
+
+    partial void OnIsCalibratingChanged(bool value) => OnPropertyChanged(nameof(CalibrateButtonText));
+
+    private string InputDeviceKey => InputDeviceName == AudioDevices.SystemDefault ? "" : InputDeviceName ?? "";
+
+    [RelayCommand]
+    private void Calibrate()
+    {
+        if (IsCalibrating)
+        {
+            CancelCalibration();
+            CalibrationStatus = "已取消。";
+            CalibrationFailed = false;
+            return;
+        }
+        if (!_meterOn)
+        {
+            CalibrationStatus = "打不开麦克风，无法校准。";
+            CalibrationFailed = true;
+            return;
+        }
+        _calibrator = new MicCalibrator(AudioEngine.SampleRate, AudioEngine.FrameSamples, MicDenoise);
+        IsCalibrating = true;
+        CalibrationFailed = false;
+        CalibrationStatus = "请保持安静……";
+    }
+
+    private void CancelCalibration()
+    {
+        var calibrator = Interlocked.Exchange(ref _calibrator, null);
+        calibrator?.Dispose();
+        IsCalibrating = false;
+    }
+
+    /// <summary>设备线程上调：喂给校准器，阶段变了就切回界面线程更新提示。</summary>
+    private void FeedCalibration(short[] frame)
+    {
+        var calibrator = _calibrator;
+        if (calibrator is null || calibrator.Stage == CalibrationStage.Done)
+            return;
+        var before = calibrator.Stage;
+        calibrator.Feed(frame);
+        var after = calibrator.Stage;
+        if (after == before)
+            return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!ReferenceEquals(_calibrator, calibrator))
+                return;
+            if (after == CalibrationStage.Read)
+                CalibrationStatus = "请以平时通话的音量和距离朗读：";
+            else if (after == CalibrationStage.Done)
+                FinishCalibration(calibrator);
+        });
+    }
+
+    private void FinishCalibration(MicCalibrator calibrator)
+    {
+        _calibrator = null;
+        IsCalibrating = false;
+        var m = calibrator.Measure();
+        calibrator.Dispose();
+        var result = MicCalibration.ComputeGain(m);
+        var device = InputDeviceKey;
+        var state = calibrator.Denoise ? "on" : "off";
+        var log = Core.Util.Log.For("audio");
+        if (result.GainDb is not { } gain)
+        {
+            log.Info($"calibration rejected (denoise {state}): {result.Failure} (speech {m.SpeechDbfs:F1} dBFS, " +
+                     $"noise {m.NoiseDbfs:F1} dBFS, {m.SpeechSeconds:F1} s of speech, {m.ClipRatio:P1} clipped)");
+            CalibrationStatus = MicCalibration.Describe(result.Failure!.Value);
+            CalibrationFailed = true;
+            return;
+        }
+        log.Info($"calibration accepted (denoise {state}): gain {gain:+0.0;-0.0} dB " +
+                 $"(speech {m.SpeechDbfs:F1} dBFS, noise {m.NoiseDbfs:F1} dBFS)");
+        _pendingCalibrations[device] = MicCalibration.Entry(m, gain, calibrator.Denoise);
+        InputVolumeDb = ClampSlider(gain);
+        CalibrationStatus = $"校准完成：麦克风音量 {InputVolumeText} dB。点“应用”保存。";
+        CalibrationFailed = false;
+    }
+
+    /// <summary>换了设备或降噪开关：这个组合校准过就直接用校准出来的音量。</summary>
+    private void AdoptCalibration()
+    {
+        if (_loading)
+            return;
+        var device = InputDeviceKey;
+        double? gain = _pendingCalibrations.TryGetValue(device, out var pending)
+                       && (bool?)pending["denoise"] == MicDenoise
+            ? (double?)pending["gain_db"]
+            : _settings.CalibratedGainFor(device, MicDenoise);
+        if (gain is { } g)
+        {
+            InputVolumeDb = ClampSlider(g);
+            CalibrationStatus = $"此设备已校准，麦克风音量设为 {InputVolumeText} dB。";
+        }
+        else
+            CalibrationStatus = "";
+        CalibrationFailed = false;
+    }
+
+    /// <summary>滑块是 -60 ~ +18 的整数刻度。</summary>
+    private static double ClampSlider(double gain) => Math.Clamp(Math.Round(gain), -60, 18);
 
     private void OnMeterFrame(short[] frame)
     {
+        FeedCalibration(frame);
         // 语音连着的话发送链路已经处理过一遍了；这里按当前滑块自己算一遍，只为了显示
         var copy = (short[])frame.Clone();
         _meterLimiter?.Process(copy, MicGain.DbToLinear(InputVolumeDb));
@@ -755,19 +907,19 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     {
         IsScanning = true;
         ScanProgressText = "正在查找 SimObjects 文件夹……";
-        _ = _controller.Models.RescanAsync();
+        _ = _models.RescanAsync();
     }
 
     [RelayCommand]
-    private void ResetDefaultModel() => DefaultModel = _controller.Models.Simulator.DefaultModel();
+    private void ResetDefaultModel() => DefaultModel = _models.Simulator.DefaultModel();
 
     [RelayCommand]
     private void TestMatch()
     {
         if (string.IsNullOrWhiteSpace(MatchTestCallsign))
             return;
-        var result = _controller.Models.Match(MatchTestCallsign, MatchTestType);
-        var installed = result.IsDefault || _controller.Models.Matcher.IsInstalled(result.ModelName) ? "" : "（未在扫描结果中）";
+        var result = _models.Match(MatchTestCallsign, MatchTestType);
+        var installed = result.IsDefault || _models.Matcher.IsInstalled(result.ModelName) ? "" : "（未在扫描结果中）";
         MatchTestResult = $"→ {result.ModelName}{installed}\n   {result.Description} · 来源：{result.Source}" +
                           (result.Rule is null ? "" : $" · 规则：{result.Rule}");
     }
@@ -875,8 +1027,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         SetMeter(false);
         if (IsWaitingForPtt)
             _controller.Ptt.CancelCapture();
-        _controller.Models.ScanProgressChanged -= OnScanProgress;
-        _controller.Models.ScanCompleted -= OnScanCompleted;
+        _models.ScanProgressChanged -= OnScanProgress;
+        _models.ScanCompleted -= OnScanCompleted;
     }
 }
 

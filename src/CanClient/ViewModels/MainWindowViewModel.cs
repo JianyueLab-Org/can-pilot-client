@@ -199,7 +199,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Com2.IsReceiving = false;
             foreach (var group in ControllerGroups)
                 group.Stations.Clear();
-            RefreshGroups();
         }
     }
 
@@ -293,21 +292,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void OnControllers(IReadOnlyList<ControllerInfo> list)
     {
-        foreach (var group in ControllerGroups)
-            group.Stations.Clear();
+        var stations = ControllerGroups.Select(_ => new List<ControllerStation>()).ToArray();
         foreach (var info in list.OrderBy(c => c.Callsign, StringComparer.Ordinal))
-            ControllerGroups[ControllerGroup.IndexFor(info)].Stations
-                .Add(new ControllerStation(info.Callsign, info.Frequency, info.RealName));
-        RefreshGroups();
-    }
-
-    private void RefreshGroups()
-    {
-        // ControllerGroup.Header 依赖 Stations.Count，重建集合以刷新树。
-        var groups = ControllerGroups.ToList();
-        ControllerGroups.Clear();
-        foreach (var group in groups)
-            ControllerGroups.Add(group);
+            stations[ControllerGroup.IndexFor(info)].Add(new ControllerStation(info.Callsign, info.Frequency, info.RealName));
+        for (var i = 0; i < ControllerGroups.Count; i++)
+            ControllerGroups[i].SetStations(stations[i]);
     }
 
     [RelayCommand]

@@ -292,13 +292,19 @@ public sealed class AppSettings
         }
     }
 
-    /// <summary>某个输入设备在 Python 版里校准出来的基准增益，没有返回 null。</summary>
-    public double? CalibratedGainFor(string device)
+    /// <summary>
+    /// 某个输入设备在当前降噪状态下校准出来的增益，没有返回 null。记录是在另一种降噪状态下做的也算没有
+    /// （降噪会改变测得的电平）；缺 denoise 键的老记录视为不降噪时做的。设备名空串表示系统默认设备。
+    /// </summary>
+    public double? CalibratedGainFor(string device, bool denoise)
     {
-        if (string.IsNullOrEmpty(device) || MicCalibration[device] is not JsonObject entry)
+        if (MicCalibration[device ?? ""] is not JsonObject entry)
+            return null;
+        var entryDenoise = entry["denoise"] is JsonValue d && d.TryGetValue(out bool b) && b;
+        if (entryDenoise != denoise)
             return null;
         if (entry["gain_db"] is JsonValue value && value.TryGetValue(out double gain) && !double.IsNaN(gain))
-            return Math.Clamp(gain, -12, 20);
+            return Math.Clamp(gain, Voice.MicCalibration.MinGainDb, Voice.MicCalibration.MaxGainDb);
         return null;
     }
 

@@ -103,14 +103,16 @@ public sealed class ModelMatcher
     public void SetData(ModelMatchingData data) => Data = data;
 
     /// <summary>模拟器拒绝生成这个模型（SIMCONNECT_EXCEPTION_CREATE_OBJECT_FAILED）。</summary>
-    public void MarkErroneous(string model)
+    /// <returns>是不是第一次拉黑这个模型。</returns>
+    public bool MarkErroneous(string model)
     {
         lock (_sync)
         {
             if (!_erroneous.Add(model))
-                return;
+                return false;
         }
         Log.Warning($"model {model} could not be created by the simulator and will not be used again");
+        return true;
     }
 
     public void ClearErroneous(IEnumerable<string>? keep = null)

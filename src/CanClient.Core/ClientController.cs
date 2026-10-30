@@ -504,7 +504,8 @@ public sealed class ClientController : IDisposable
         {
             if (_models.TryGetValue(entry.Callsign, out var cached) && !entry.ModelDirty
                 && cached.Equipment == entry.Equipment && cached.Airline == entry.Airline
-                && !Models.Matcher.IsErroneous(cached.Result.ModelName))
+                // 默认模型也建不出来时重配还是它，别每次都重配一遍
+                && (cached.Result.IsDefault || !Models.Matcher.IsErroneous(cached.Result.ModelName)))
                 return cached.Result;
         }
         var previous = _models.GetValueOrDefault(entry.Callsign).Result?.ModelName;
@@ -536,10 +537,12 @@ public sealed class ClientController : IDisposable
 
     private void OnCreateFailed(string callsign, string model)
     {
-        Models.MarkErroneous(model);
+        var first = Models.MarkErroneous(model);
         lock (_lock)
             _models.Remove(callsign);
-        Post(MessageKind.Error, $"模拟器无法生成模型 {model}（{callsign}），已改用其他模型。");
+        // 同一个模型只提示一次：几架飞机、几帧连着失败时别把消息区刷爆
+        if (first)
+            Post(MessageKind.Error, $"模拟器无法生成模型 {model}（{callsign}），已改用其他模型。");
     }
 
     /// <summary>注入循环的一帧：积分到此刻，写进模拟器。在注入线程上。</summary>
@@ -567,8 +570,14 @@ public sealed class ClientController : IDisposable
         if (_plannedEntries is null || models is null || _origin is null)
             return;
         var entries = Traffic.Snapshot(origin: _origin, limit: Settings.MaxAircraft, maxRangeNm: Settings.TrafficRangeNm);
+        // 拉黑了的模型在下次规划换掉之前别再拿去建，否则每帧都建一次、失败一次
+        var matcher = Models.Matcher;
         var targets = entries
-            .Select(e => new InjectionTarget(e, models.GetValueOrDefault(e.Callsign, "")))
+            .Select(e =>
+            {
+                var model = models.GetValueOrDefault(e.Callsign, "");
+                return new InjectionTarget(e, model.Length > 0 && matcher.IsErroneous(model) ? "" : model);
+            })
             .ToList();
         injector.Sync(targets, TrafficTable.Now());
     }
