@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Text.Json.Nodes;
 using Avalonia.Media;
 using Avalonia.Threading;
 using CanClient.Core;
@@ -87,7 +88,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         nameof(ShowMsfs2020), nameof(ShowMsfs2024), nameof(ShowModelMatching), nameof(ShowXPlane), nameof(ShowFsx), nameof(ShowFsxSe),
         nameof(ShowP3dV1), nameof(ShowP3dV2), nameof(ShowP3dV3), nameof(ShowP3dV4), nameof(ShowP3dV5), nameof(ShowP3dV6),
         nameof(SimulatorConnections), nameof(PackagesPathLabel), nameof(PackagesPathPlaceholder), nameof(PttBindings),
-        nameof(SelectedPttBinding), nameof(CanRemovePtt)
+        nameof(SelectedPttBinding), nameof(CanRemovePtt), nameof(IsCalibrating), nameof(CalibrationStatus),
+        nameof(CalibrationFailed), nameof(CalibrateButtonText)
     ];
 
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
@@ -267,6 +269,9 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         _settings.RangeAudio = RangeAudio;
         _settings.OutputGainDb = OutputVolumeDb;
         _settings.MicGainDb = InputVolumeDb;
+        foreach (var (device, entry) in _pendingCalibrations)
+            _settings.MicCalibration[device] = entry;
+        _pendingCalibrations.Clear();
         _settings.PttBindings = _bindings.ToList();
 
         _settings.RenderTraffic = RenderTraffic;
@@ -658,6 +663,11 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         }
         else
         {
+            if (IsCalibrating)
+            {
+                CancelCalibration();
+                CalibrationStatus = "";
+            }
             audio.FrameCaptured -= OnMeterFrame;
             audio.ReleaseCapture();
             InputLevel = 0;
@@ -666,12 +676,136 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
 
     partial void OnInputDeviceNameChanged(string? value)
     {
+        CancelCalibration();
         if (_meterOn)
             _controller.Audio.ChangeInput(value == AudioDevices.SystemDefault ? "" : value ?? "");
+        AdoptCalibration();
     }
+
+    partial void OnMicDenoiseChanged(bool value)
+    {
+        CancelCalibration();
+        AdoptCalibration();
+    }
+
+    // —— 麦克风音量自动校准（Python 版 calibration.py）：静音 1 秒测底噪，再朗读 8 秒，算出增益填进滑块 ——
+    private MicCalibrator? _calibrator;
+    /// <summary>校准出来、还没"应用"的记录：设备名（空串是系统默认）→ mic_calibration 条目。</summary>
+    private readonly Dictionary<string, JsonObject> _pendingCalibrations = new();
+
+    public string CalibrationPhrase => MicCalibration.Phrase;
+    [ObservableProperty] private bool _isCalibrating;
+    [ObservableProperty] private string _calibrationStatus = "";
+    [ObservableProperty] private bool _calibrationFailed;
+    public string CalibrateButtonText => IsCalibrating ? "取消校准" : "自动校准麦克风音量";
+
+    partial void OnIsCalibratingChanged(bool value) => OnPropertyChanged(nameof(CalibrateButtonText));
+
+    private string InputDeviceKey => InputDeviceName == AudioDevices.SystemDefault ? "" : InputDeviceName ?? "";
+
+    [RelayCommand]
+    private void Calibrate()
+    {
+        if (IsCalibrating)
+        {
+            CancelCalibration();
+            CalibrationStatus = "已取消。";
+            CalibrationFailed = false;
+            return;
+        }
+        if (!_meterOn)
+        {
+            CalibrationStatus = "打不开麦克风，无法校准。";
+            CalibrationFailed = true;
+            return;
+        }
+        _calibrator = new MicCalibrator(AudioEngine.SampleRate, AudioEngine.FrameSamples, MicDenoise);
+        IsCalibrating = true;
+        CalibrationFailed = false;
+        CalibrationStatus = "请保持安静……";
+    }
+
+    private void CancelCalibration()
+    {
+        var calibrator = Interlocked.Exchange(ref _calibrator, null);
+        calibrator?.Dispose();
+        IsCalibrating = false;
+    }
+
+    /// <summary>设备线程上调：喂给校准器，阶段变了就切回界面线程更新提示。</summary>
+    private void FeedCalibration(short[] frame)
+    {
+        var calibrator = _calibrator;
+        if (calibrator is null || calibrator.Stage == CalibrationStage.Done)
+            return;
+        var before = calibrator.Stage;
+        calibrator.Feed(frame);
+        var after = calibrator.Stage;
+        if (after == before)
+            return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!ReferenceEquals(_calibrator, calibrator))
+                return;
+            if (after == CalibrationStage.Read)
+                CalibrationStatus = "请以平时通话的音量和距离朗读：";
+            else if (after == CalibrationStage.Done)
+                FinishCalibration(calibrator);
+        });
+    }
+
+    private void FinishCalibration(MicCalibrator calibrator)
+    {
+        _calibrator = null;
+        IsCalibrating = false;
+        var m = calibrator.Measure();
+        calibrator.Dispose();
+        var result = MicCalibration.ComputeGain(m);
+        var device = InputDeviceKey;
+        var state = calibrator.Denoise ? "on" : "off";
+        var log = Core.Util.Log.For("audio");
+        if (result.GainDb is not { } gain)
+        {
+            log.Info($"calibration rejected (denoise {state}): {result.Failure} (speech {m.SpeechDbfs:F1} dBFS, " +
+                     $"noise {m.NoiseDbfs:F1} dBFS, {m.SpeechSeconds:F1} s of speech, {m.ClipRatio:P1} clipped)");
+            CalibrationStatus = MicCalibration.Describe(result.Failure!.Value);
+            CalibrationFailed = true;
+            return;
+        }
+        log.Info($"calibration accepted (denoise {state}): gain {gain:+0.0;-0.0} dB " +
+                 $"(speech {m.SpeechDbfs:F1} dBFS, noise {m.NoiseDbfs:F1} dBFS)");
+        _pendingCalibrations[device] = MicCalibration.Entry(m, gain, calibrator.Denoise);
+        InputVolumeDb = ClampSlider(gain);
+        CalibrationStatus = $"校准完成：麦克风音量 {InputVolumeText} dB。点“应用”保存。";
+        CalibrationFailed = false;
+    }
+
+    /// <summary>换了设备或降噪开关：这个组合校准过就直接用校准出来的音量。</summary>
+    private void AdoptCalibration()
+    {
+        if (_loading)
+            return;
+        var device = InputDeviceKey;
+        double? gain = _pendingCalibrations.TryGetValue(device, out var pending)
+                       && (bool?)pending["denoise"] == MicDenoise
+            ? (double?)pending["gain_db"]
+            : _settings.CalibratedGainFor(device, MicDenoise);
+        if (gain is { } g)
+        {
+            InputVolumeDb = ClampSlider(g);
+            CalibrationStatus = $"此设备已校准，麦克风音量设为 {InputVolumeText} dB。";
+        }
+        else
+            CalibrationStatus = "";
+        CalibrationFailed = false;
+    }
+
+    /// <summary>滑块是 -60 ~ +18 的整数刻度。</summary>
+    private static double ClampSlider(double gain) => Math.Clamp(Math.Round(gain), -60, 18);
 
     private void OnMeterFrame(short[] frame)
     {
+        FeedCalibration(frame);
         // 语音连着的话发送链路已经处理过一遍了；这里按当前滑块自己算一遍，只为了显示
         var copy = (short[])frame.Clone();
         _meterLimiter?.Process(copy, MicGain.DbToLinear(InputVolumeDb));
