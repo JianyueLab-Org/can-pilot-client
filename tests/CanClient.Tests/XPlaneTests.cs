@@ -86,7 +86,7 @@ public class XPlaneTests
     public void RrefRejectsMalformedPacketsAndRequiresPosition()
     {
         using var xp = new XPlaneConnection(new AppSettings());
-        Assert.False(xp.Handle("RREF\0"u8.ToArray()));
+        Assert.False(xp.Handle("RREF,"u8.ToArray()));
         var packet = Rref((0, 31), (1, 121), (2, 1000), (-1, 1), (999, 3));
         Assert.True(xp.Handle(packet));
         Assert.NotNull(xp.Snapshot());
@@ -175,10 +175,26 @@ public class XPlaneTests
     }
 
 
+    [Theory]
+    [InlineData((byte)',')]
+    [InlineData((byte)0)]
+    public void RrefAcceptsTheHeaderXPlaneActuallySends(byte fifth)
+    {
+        // X-Plane 11 / 12 实际发的是 "RREF,"，文档写的是 "RREF"+0，两种都要收
+        using var xp = new XPlaneConnection(new AppSettings());
+        var packet = Rref((0, 31), (1, 121), (2, 1000));
+        packet[4] = fifth;
+        Assert.True(xp.Handle(packet));
+        Assert.NotNull(xp.Snapshot());
+        packet[0] = (byte)'D';
+        Assert.False(xp.Handle(packet));
+    }
+
+    /// <summary>和真实 X-Plane 一样用 "RREF," 做包头。</summary>
     private static byte[] Rref(params (int Index, float Value)[] values)
     {
         var bytes = new byte[5 + values.Length * 8];
-        "RREF\0"u8.CopyTo(bytes);
+        "RREF,"u8.CopyTo(bytes);
         for (var i = 0; i < values.Length; i++)
         {
             BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(5 + i * 8), values[i].Index);

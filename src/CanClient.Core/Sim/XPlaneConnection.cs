@@ -94,7 +94,9 @@ public sealed class XPlaneConnection(AppSettings settings) : IDisposable
 
     internal bool Handle(byte[] bytes)
     {
-        if (bytes.Length < 13 || !bytes.AsSpan(0, 5).SequenceEqual("RREF\0"u8) || (bytes.Length - 5) % 8 != 0)
+        // 只认前 4 个字节：Laminar 文档写回包头是 "RREF"+0，实际 X-Plane 11 / 12 发的是 "RREF,"（第 5 个字节是逗号）。
+        // 按 "RREF\0" 比 5 个字节会把 X-Plane 的每个回包都丢掉，表现为“发现了 X-Plane 却一直没数据”。
+        if (bytes.Length < 13 || !bytes.AsSpan(0, 4).SequenceEqual("RREF"u8) || (bytes.Length - 5) % 8 != 0)
             return false;
         var valid = false;
         lock (_gate)
