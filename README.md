@@ -111,6 +111,16 @@ X-Plane 插件包 `native/XPC_for_CAN-plugin.zip` 已提交在仓库里，CI 直
 - **运行依赖**：FSX 的 SimConnect.dll 依赖 Visual C++ 2005 x86 运行库，FSX / P3D 安装时都会装好。缺少桥接程序时日志会提示，P3D / FSX 无法接入，MSFS / X-Plane 不受影响。
 - 本地构建时 `src/CanClient` 会自动用 NativeAOT 发布桥接到输出目录的 `fsx/`（需要 VS 的 C++ 工具，和 RNNoise 一样；失败只告警）；`-p:SkipSimConnectBridge=true` 可跳过。实际联机流程按 vPilot 的协议实现，尚未在真实 P3D / FSX 上做过联飞验证。
 
+## 麦克风与语音会话生命周期
+
+语音连接和设置页电平表各持有一份麦克风采集引用。断开语音只释放语音自己的引用；电平表仍开启时继续采集。
+会话关闭会等正在处理的那一帧做完再销毁降噪状态；停止后迟到的采集回调不再处理音频、不再上报电平，也不会重新创建降噪器或限幅器。
+停止的 `VoiceSession` 不会再启动，重新连接时创建新会话。相关回归测试：
+
+```bash
+dotnet test tests/CanClient.Tests --filter FullyQualifiedName~VoiceLifetimeTests
+```
+
 ## X-Plane 接入
 
 1. 打开“设置 → 模拟器”，接入模式选 `Auto`（自动检测）或 `XPlane`，MSFS 用户可选 `MSFS`，P3D / FSX 用户可选 `FSX/P3D`；X-Plane 目录和插件配置在相邻的“X-Plane”页。

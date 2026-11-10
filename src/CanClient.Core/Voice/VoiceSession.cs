@@ -55,12 +55,15 @@ public sealed class VoiceSession : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly AutoResetEvent _channelWanted = new(false);
     private readonly object _channelLock = new();
+    // 守 _running/_stopped、DSP 状态、采集引用和后台线程的创建；关闭/join 音频时不持有
+    private readonly object _captureLock = new();
     private readonly ConcurrentDictionary<uint, OpusDecoder> _decoders = new();
     private Thread? _connectionThread;
     private Thread? _channelThread;
     private Thread? _rxThread;
     private volatile MumbleConnection? _connection;
     private volatile bool _running;
+    private bool _stopped; // Protected by _captureLock; cancellation runs outside it.
     private volatile bool _kicked;
     private bool _established;
     private bool _wasDropped;
@@ -80,8 +83,6 @@ public sealed class VoiceSession : IDisposable
 
     // 发送
     private OpusEncoder? _encoder;
-    // 降噪器的创建、处理、释放都在这把锁里：设置页电平表还占着麦克风时，退订之后采集回调可能还在跑
-    private readonly object _dspLock = new();
     private Denoiser? _denoiser;
     private Limiter? _limiter;
     private volatile bool _transmitting;
@@ -91,7 +92,6 @@ public sealed class VoiceSession : IDisposable
     private long _lastPacket;
     private int _sentFrames;
     private string _skipReason = "";
-    private short[]? _lastProcessed;
 
     // 接收
     private volatile IReadOnlyDictionary<string, bool> _rangePolicy = new Dictionary<string, bool>();
@@ -171,40 +171,76 @@ public sealed class VoiceSession : IDisposable
 
     public void Start()
     {
-        if (_running)
-            return;
-        _running = true;
+        lock (_captureLock)
+        {
+            if (_running || _stopped)
+                return;
+            _running = true;
+        }
         Status(LinkState.Connecting, $"正在连接语音服务器 {_host} …");
+        var captureAcquired = false;
         try
         {
             _audio.StartPlayback(_outputDevice);
             _audio.AcquireCapture(_inputDevice);
-            _captureAcquired = true;
-            _audio.FrameCaptured += OnFrame;
-            _encoder = new OpusEncoder();
+            captureAcquired = true;
+            lock (_channelLock)
+            {
+                if (_running)
+                    _encoder = new OpusEncoder();
+            }
+            lock (_captureLock)
+            {
+                if (_running)
+                {
+                    _captureAcquired = true;
+                    captureAcquired = false; // Ownership transfers to Release.
+                    _audio.FrameCaptured += OnFrame;
+                }
+            }
+            if (captureAcquired)
+            {
+                captureAcquired = false;
+                _audio.ReleaseCapture();
+                return;
+            }
         }
         catch (Exception e)
         {
             _running = false;
+            if (captureAcquired)
+                _audio.ReleaseCapture();
             Release();
             Status(LinkState.Error, $"打不开音频设备：{e.Message}");
             return;
         }
 
-        _connectionThread = new Thread(ConnectionLoop) { IsBackground = true, Name = "mumble" };
-        _connectionThread.Start();
-        _channelThread = new Thread(ChannelLoop) { IsBackground = true, Name = "mumble-channel" };
-        _channelThread.Start();
-        _rxThread = new Thread(RxLoop) { IsBackground = true, Name = "mumble-rx" };
-        _rxThread.Start();
+        // Start / Stop 都由线程池调度，可能交错：线程要么在 Stop 拿锁之前建好（Stop 会 join），
+        // 要么 Stop 已经先停了，这里就不再建，免得停止后才连上的连接没人关
+        lock (_captureLock)
+        {
+            if (!_running)
+                return;
+            _connectionThread = new Thread(ConnectionLoop) { IsBackground = true, Name = "mumble" };
+            _connectionThread.Start();
+            _channelThread = new Thread(ChannelLoop) { IsBackground = true, Name = "mumble-channel" };
+            _channelThread.Start();
+            _rxThread = new Thread(RxLoop) { IsBackground = true, Name = "mumble-rx" };
+            _rxThread.Start();
+        }
     }
 
     public void Stop() => Stop(LinkState.Stopped, "语音已断开");
 
     private void Stop(LinkState state, string message)
     {
-        var wasRunning = _running;
-        _running = false;
+        bool wasRunning;
+        lock (_captureLock)
+        {
+            wasRunning = _running;
+            _stopped = true;
+            _running = false;
+        }
         _cts.Cancel();
         _channelWanted.Set();
         _connection?.Close();
@@ -220,21 +256,24 @@ public sealed class VoiceSession : IDisposable
 
     private void Release()
     {
-        _audio.FrameCaptured -= OnFrame;
-        if (_captureAcquired)
+        bool releaseCapture;
+        lock (_captureLock)
         {
+            _audio.FrameCaptured -= OnFrame;
+            releaseCapture = _captureAcquired;
             _captureAcquired = false;
-            _audio.ReleaseCapture();
+            _denoiser?.Dispose();
+            _denoiser = null;
+            _limiter = null;
         }
+        // Closing the last capture reference can join the callback thread.
+        // That thread must be able to enter _captureLock and see !_running.
+        if (releaseCapture)
+            _audio.ReleaseCapture();
         lock (_channelLock)
         {
             _encoder?.Dispose();
             _encoder = null;
-        }
-        lock (_dspLock)
-        {
-            _denoiser?.Dispose();
-            _denoiser = null;
         }
         foreach (var decoder in _decoders.Values)
             decoder.Dispose();
@@ -619,22 +658,21 @@ public sealed class VoiceSession : IDisposable
     private void OnFrame(short[] frame)
     {
         var samples = frame;
-        if (_options.Denoise && Denoiser.Available)
+        double peak;
+        lock (_captureLock)
         {
-            lock (_dspLock)
+            if (!_running)
+                return;
+            if (_options.Denoise && Denoiser.Available)
             {
-                // Release 之后迟到的回调不能再建一个没人释放的原生状态
-                if (_running)
-                {
-                    _denoiser ??= new Denoiser(AudioEngine.SampleRate);
-                    _denoiser.Process(samples);
-                }
+                _denoiser ??= new Denoiser(AudioEngine.SampleRate);
+                _denoiser.Process(samples);
             }
+            _limiter ??= new Limiter(AudioEngine.SampleRate);
+            _limiter.Process(samples, MicGain.DbToLinear(_options.MicGainDb));
+            peak = MicGain.Peak(samples);
         }
-        _limiter ??= new Limiter(AudioEngine.SampleRate);
-        _limiter.Process(samples, MicGain.DbToLinear(_options.MicGainDb));
-        _lastProcessed = samples;
-        Level?.Invoke(MicGain.Peak(samples));
+        Level?.Invoke(peak);
 
         var transmitting = _transmitting;
         if (!transmitting)

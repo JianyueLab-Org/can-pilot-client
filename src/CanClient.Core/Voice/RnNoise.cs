@@ -72,7 +72,7 @@ public sealed class Denoiser : IDisposable
 
     public int RateHz { get; }
 
-    public bool Active => _state != IntPtr.Zero;
+    public bool Active { get { lock (_gate) return _state != IntPtr.Zero; } }
 
     /// <summary>就地处理一帧（长度必须是 480 的整数倍）。</summary>
     public unsafe void Process(Span<short> samples)
