@@ -20,4 +20,3 @@ RNNOISE-COPYING
 librnnoise.so
 librnnoise.dylib
 native/rnnoise/out-*/
-.temp/

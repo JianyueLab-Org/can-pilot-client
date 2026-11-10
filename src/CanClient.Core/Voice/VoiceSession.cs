@@ -55,7 +55,7 @@ public sealed class VoiceSession : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly AutoResetEvent _channelWanted = new(false);
     private readonly object _channelLock = new();
-    // Only session DSP and capture ownership; never held while closing/joining audio.
+    // 守 _running/_stopped、DSP 状态、采集引用和后台线程的创建；关闭/join 音频时不持有
     private readonly object _captureLock = new();
     private readonly ConcurrentDictionary<uint, OpusDecoder> _decoders = new();
     private Thread? _connectionThread;
@@ -215,12 +215,19 @@ public sealed class VoiceSession : IDisposable
             return;
         }
 
-        _connectionThread = new Thread(ConnectionLoop) { IsBackground = true, Name = "mumble" };
-        _connectionThread.Start();
-        _channelThread = new Thread(ChannelLoop) { IsBackground = true, Name = "mumble-channel" };
-        _channelThread.Start();
-        _rxThread = new Thread(RxLoop) { IsBackground = true, Name = "mumble-rx" };
-        _rxThread.Start();
+        // Start / Stop 都由线程池调度，可能交错：线程要么在 Stop 拿锁之前建好（Stop 会 join），
+        // 要么 Stop 已经先停了，这里就不再建，免得停止后才连上的连接没人关
+        lock (_captureLock)
+        {
+            if (!_running)
+                return;
+            _connectionThread = new Thread(ConnectionLoop) { IsBackground = true, Name = "mumble" };
+            _connectionThread.Start();
+            _channelThread = new Thread(ChannelLoop) { IsBackground = true, Name = "mumble-channel" };
+            _channelThread.Start();
+            _rxThread = new Thread(RxLoop) { IsBackground = true, Name = "mumble-rx" };
+            _rxThread.Start();
+        }
     }
 
     public void Stop() => Stop(LinkState.Stopped, "语音已断开");
