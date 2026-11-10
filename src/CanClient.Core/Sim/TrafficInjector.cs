@@ -437,8 +437,7 @@ public sealed class TrafficInjector : IDisposable
         if (record.ObjectId is not { } objectId)
             return;
         Move(objectId, entry, GroundAltitude(callsign, record, objectId, entry, now));
-        if (_surfaceDefinitions.Count > 0)
-            WriteSurfaces(record, objectId, entry);
+        WriteSurfaces(record, objectId, entry);
         if (_lightEvents.Length > 0)
             WriteLights(callsign, record, objectId, entry);
     }
@@ -631,6 +630,13 @@ public sealed class TrafficInjector : IDisposable
 
     private void WriteSurfaces(Record record, uint objectId, TrafficEntry entry)
     {
+        // 定义表会被异常回调删掉，快照必须在锁内取
+        KeyValuePair<string, uint>[] definitions;
+        lock (_lock)
+            definitions = _surfaceDefinitions.ToArray();
+        if (definitions.Length == 0)
+            return;
+
         var gear = entry.GearDown;
         if (gear is null && entry.OnGround)
             gear = true;
@@ -647,7 +653,7 @@ public sealed class TrafficInjector : IDisposable
             ["engine_3"] = engines,
             ["engine_4"] = engines
         };
-        foreach (var (key, definition) in _surfaceDefinitions.ToList())
+        foreach (var (key, definition) in definitions)
         {
             if (wanted.GetValueOrDefault(key) is not { } value)
                 continue;
