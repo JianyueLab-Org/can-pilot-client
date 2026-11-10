@@ -9,13 +9,13 @@ public sealed record UpdateInfo(string Version);
 /// 查有没有新版，对应 Python 版 update.py。查到了也只是告诉用户，绝不自动更新；
 /// 任何失败都返回 null，不影响启动。
 ///
-///     GET https://ceruleanavi.net/api/v1/clients/latest?client=msfs-for-can&amp;version=2.2.1
+///     GET https://api.ceruleanavi.net/api/v1/clients/latest?client=msfs-for-can&amp;version=2.2.1
 ///
 /// 回包里顶层的 client 是包名字符串，那一包的信息在 clients[包名]；有没有新版在 update.available。
 /// </summary>
 public static class UpdateChecker
 {
-    public const string DefaultUrl = "https://ceruleanavi.net/api/v1/clients/latest";
+    public const string DefaultUrl = "https://api.ceruleanavi.net/api/v1/clients/latest";
 
     private static readonly Logger Log = Util.Log.For("update");
 
