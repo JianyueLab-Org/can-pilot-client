@@ -17,18 +17,38 @@ public sealed class ModelMatchingService
     private readonly AppSettings _settings;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private CancellationTokenSource? _scanCancellation;
+    private readonly bool _detached;
+    private readonly SemaphoreSlim _switchGate = new(1, 1);
+    private readonly object _dataSync = new();
+    private Task? _dataLoaded;
 
-    public ModelMatchingService(AppSettings settings)
+    public ModelMatchingService(AppSettings settings) : this(settings, detached: false)
+    {
+    }
+
+    private ModelMatchingService(AppSettings settings, bool detached)
     {
         _settings = settings;
+        _detached = detached;
         Matcher = new ModelMatcher(ModelMatchingData.Empty);
         Matcher.RulesChanged += () => RulesChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// 一个不影响他机注入的副本：设置页查看/编辑"另一个"模拟器的模型匹配时用。
+    /// 共用同一份设置，但不会把正连着的模拟器的规则和扫描结果换掉，也不改 LastSimulator。
+    /// </summary>
+    public ModelMatchingService CreateDetached()
+    {
+        var copy = new ModelMatchingService(_settings, detached: true) { Data = Data, _dataLoaded = Task.CompletedTask };
+        copy.Matcher.SetData(Data);
+        return copy;
     }
 
     public ModelMatchingData Data { get; private set; } = ModelMatchingData.Empty;
     public ModelMatcher Matcher { get; }
     public SimulatorType Simulator { get; private set; } = SimulatorType.None;
-    public MsfsInstallation? Installation { get; private set; }
+    public ISimulatorInstallation? Installation { get; private set; }
     public ModelScanResult? ScanResult { get; private set; }
     public bool Scanning { get; private set; }
     public ScanProgress? Progress { get; private set; }
@@ -56,11 +76,19 @@ public sealed class ModelMatchingService
     /// <summary>启动时调一次：读数据库、挑一个模拟器、核对缓存。</summary>
     public async Task InitializeAsync()
     {
-        await Task.Run(LoadData).ConfigureAwait(false);
-        var installed = MsfsInstallation.InstalledSimulators().ToArray();
+        await EnsureDataLoaded().ConfigureAwait(false);
+        var installed = SimulatorInstallations.Installed().ToArray();
         var simulator = installed.Contains(_settings.LastSimulator) ? _settings.LastSimulator : installed.FirstOrDefault();
         if (simulator == SimulatorType.None) return;
-        await SetSimulatorAsync(simulator).ConfigureAwait(false);
+        // 启动时模拟器可能已经连上了（Sim.Opened 先到）：那就以连着的为准，别再换成上次用的那个
+        await SetSimulatorGatedAsync(simulator, forceValidate: false, startupGuess: true).ConfigureAwait(false);
+    }
+
+    /// <summary>读一次 ModelMatchingData；启动和"先连上了模拟器"谁先来谁触发，另一个等着。</summary>
+    private Task EnsureDataLoaded()
+    {
+        lock (_dataSync)
+            return _dataLoaded ??= Task.Run(LoadData);
     }
 
     private void LoadData()
@@ -81,14 +109,34 @@ public sealed class ModelMatchingService
     }
 
     /// <summary>连上了某个模拟器（或启动时猜的那个）。换了模拟器就换一套扫描结果和规则。</summary>
-    public async Task SetSimulatorAsync(SimulatorType simulator, bool forceValidate = false)
+    public async Task SetSimulatorAsync(SimulatorType simulator, bool forceValidate = false) =>
+        await SetSimulatorGatedAsync(simulator, forceValidate, startupGuess: false).ConfigureAwait(false);
+
+    private async Task SetSimulatorGatedAsync(SimulatorType simulator, bool forceValidate, bool startupGuess)
     {
-        if (simulator is SimulatorType.None or SimulatorType.XPlane)
+        if (!simulator.UsesSimConnect())
             return;
+        // 数据库没读完就生成规则，认不出机型；两次切换交错执行，规则和默认模型会混成两个模拟器的
+        await EnsureDataLoaded().ConfigureAwait(false);
+        await _switchGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (startupGuess && Simulator != SimulatorType.None)
+                return;
+            await SwitchAsync(simulator, forceValidate).ConfigureAwait(false);
+        }
+        finally
+        {
+            _switchGate.Release();
+        }
+    }
+
+    private async Task SwitchAsync(SimulatorType simulator, bool forceValidate)
+    {
         if (simulator == Simulator && !forceValidate && ScanResult is not null)
             return;
         Simulator = simulator;
-        if (_settings.LastSimulator != simulator)
+        if (!_detached && _settings.LastSimulator != simulator)
         {
             _settings.LastSimulator = simulator;
             _settings.Save();
@@ -97,15 +145,19 @@ public sealed class ModelMatchingService
         var config = Config;
         Matcher.DefaultModel = string.IsNullOrWhiteSpace(config.DefaultModel) ? simulator.DefaultModel() : config.DefaultModel;
         Matcher.ClearErroneous(config.ErroneousModels);
-        var packagesPath = simulator == SimulatorType.Msfs ? _settings.Msfs2020PackagesPath : _settings.Msfs2024PackagesPath;
-        Installation = new MsfsInstallation(simulator, string.IsNullOrWhiteSpace(packagesPath) ? _settings.PackagesPath : packagesPath);
+        var configuredPath = _settings.SimulatorPathFor(simulator);
+        // 老版本只有一个 packages_path，两个 MSFS 共用
+        if (simulator.IsMsfs() && string.IsNullOrWhiteSpace(configuredPath))
+            configuredPath = _settings.PackagesPath;
+        var installation = SimulatorInstallations.Create(simulator, configuredPath)!;
+        Installation = installation;
 
         var cached = ModelScanStore.Load(simulator);
         string? reason;
-        if (Installation.IsValid)
-            reason = await Task.Run(() => ModelScanStore.NeedsRescan(cached, Installation)).ConfigureAwait(false);
+        if (installation.IsValid)
+            reason = await Task.Run(() => ModelScanStore.NeedsRescan(cached, installation)).ConfigureAwait(false);
         else
-            reason = cached is null ? "找不到 MSFS 的包目录" : null;
+            reason = cached is null ? $"找不到 {simulator.DisplayName()} 的{ModelFolderName(simulator)}" : null;
 
         ScanResult = cached;
         Matcher.LoadCustomRuleSets(config.CustomRuleSets, raise: false);
@@ -119,14 +171,17 @@ public sealed class ModelMatchingService
             return;
         }
         Log.Info($"{simulator} needs a model scan: {reason}");
-        if (Installation.IsValid)
+        if (installation.IsValid)
         {
             Notification?.Invoke($"需要扫描已安装的飞机模型（{reason}），正在后台扫描……");
             _ = RescanAsync();
         }
         else
-            Notification?.Invoke($"没有找到 {simulator.FullName()} 的包目录，他机无法匹配模型。可以在设置的“模型匹配”里手动指定。");
+            Notification?.Invoke($"没有找到 {simulator.FullName()} 的{ModelFolderName(simulator)}，他机无法匹配模型。可以在设置的“{simulator.DisplayName()}”页面里手动指定。");
     }
+
+    /// <summary>设置里手动指定的那个目录叫什么：MSFS 是包目录，FSX / P3D 是安装目录。</summary>
+    public static string ModelFolderName(SimulatorType simulator) => simulator.IsMsfs() ? "包目录" : "安装目录";
 
     /// <summary>重新扫描。正在扫的话等它扫完再来一遍。</summary>
     public async Task RescanAsync()
@@ -261,14 +316,16 @@ public sealed class ModelMatchingService
         Matcher.Match(callsign, typeCode, previousModel);
 
     /// <summary>模拟器建不出这个模型：记进拉黑名单（存盘），之后不再用它。</summary>
-    public void MarkErroneous(string model)
+    /// <returns>是不是第一次拉黑这个模型。</returns>
+    public bool MarkErroneous(string model)
     {
-        Matcher.MarkErroneous(model);
+        var added = Matcher.MarkErroneous(model);
         var config = Config;
         if (!config.ErroneousModels.Contains(model, StringComparer.OrdinalIgnoreCase))
         {
             config.ErroneousModels.Add(model);
             _settings.Save();
         }
+        return added;
     }
 }

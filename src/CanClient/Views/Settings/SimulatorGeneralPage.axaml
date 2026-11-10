@@ -4,6 +4,6 @@
     <TextBlock Classes="label" Text="模拟器接入" />
     <ComboBox ItemsSource="{Binding SimulatorConnections}" SelectedItem="{Binding SimulatorConnection}" IsEnabled="{Binding CanChangeSimulator}" />
     <CheckBox Content="显示所有模拟器（包括未检测到安装的）" IsChecked="{Binding ShowAllSimulators}" />
-    <TextBlock Classes="caption" TextWrapping="Wrap" Text="默认只显示已安装的 MSFS 2020、MSFS 2024 和 X-Plane。便携安装未被检测到时，开启显示所有模拟器，再到对应页面指定目录。联飞前选择接入类型，连接期间不切换。" />
+    <TextBlock Classes="caption" TextWrapping="Wrap" Text="默认只显示这台电脑上检测到的模拟器（MSFS 2020 / 2024、FSX、FSX:SE、P3D v1–v6、X-Plane），接入方式里也只列出装了的。便携安装未被检测到时，开启显示所有模拟器，再到对应页面指定目录。联飞前选择接入类型，连接期间不切换。" />
   </StackPanel>
 </UserControl>

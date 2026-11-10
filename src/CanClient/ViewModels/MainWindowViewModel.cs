@@ -59,6 +59,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             RefreshConnectionStatus();
         });
         controller.SimStateChanged += (connected, _) => Ui(() => SimConnected = connected);
+        controller.Sim.XPlane.ProblemChanged += problem => Ui(() =>
+        {
+            XPlaneProblem = problem;
+            if (problem is not null) AddSystem(problem);
+        });
         controller.AttentionRequested += reason => Ui(() => AttentionRequested?.Invoke(reason));
         controller.Models.ScanProgressChanged += p => Ui(() => ScanStatus = p.Stage);
         controller.Models.ScanCompleted += _ => Ui(() => ScanStatus = "");
@@ -137,9 +142,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(StatusText))]
     private string _scanStatus = "";
 
+    /// <summary>发现了 X-Plane 但收不到数据的原因，完整说明同时发在消息区。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusText))]
+    private string? _xPlaneProblem;
+
     /// <summary>呼号旁边那行小字：模型扫描进度优先，其次是模拟器连没连上。</summary>
     public string StatusText => ScanStatus.Length > 0 ? ScanStatus
-        : SimConnected ? $"{_controller.Sim.ApplicationName}" : "等待模拟器";
+        : SimConnected ? $"{_controller.Sim.ApplicationName}"
+        : XPlaneProblem is not null ? "X-Plane 没有数据（见消息）" : "等待模拟器";
     [ObservableProperty] private string _windowTitle = $"{AppVersion.ClientName} {AppVersion.Display}";
 
     private bool _suppressModeC;
@@ -188,7 +199,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Com2.IsReceiving = false;
             foreach (var group in ControllerGroups)
                 group.Stations.Clear();
-            RefreshGroups();
         }
     }
 
@@ -282,21 +292,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void OnControllers(IReadOnlyList<ControllerInfo> list)
     {
-        foreach (var group in ControllerGroups)
-            group.Stations.Clear();
+        var stations = ControllerGroups.Select(_ => new List<ControllerStation>()).ToArray();
         foreach (var info in list.OrderBy(c => c.Callsign, StringComparer.Ordinal))
-            ControllerGroups[ControllerGroup.IndexFor(info)].Stations
-                .Add(new ControllerStation(info.Callsign, info.Frequency, info.RealName));
-        RefreshGroups();
-    }
-
-    private void RefreshGroups()
-    {
-        // ControllerGroup.Header 依赖 Stations.Count，重建集合以刷新树。
-        var groups = ControllerGroups.ToList();
-        ControllerGroups.Clear();
-        foreach (var group in groups)
-            ControllerGroups.Add(group);
+            stations[ControllerGroup.IndexFor(info)].Add(new ControllerStation(info.Callsign, info.Frequency, info.RealName));
+        for (var i = 0; i < ControllerGroups.Count; i++)
+            ControllerGroups[i].SetStations(stations[i]);
     }
 
     [RelayCommand]

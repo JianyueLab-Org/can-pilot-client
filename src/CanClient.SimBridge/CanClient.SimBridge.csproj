@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    FSX / P3D 的 SimConnect 桥接进程。FSX SP2 / Acceleration 的 SimConnect.dll 只有 32 位，
+    x64 的客户端进程加载不了，所以单独起一个 32 位进程加载它，客户端经标准输入输出转发调用
+    （协议见 CanClient.Core/Sim/SimConnectBridge.cs）。P3D v1–v6 都接受这个老客户端，和 vPilot 一样。
+
+    NativeAOT 发布成一个不依赖 .NET 运行时的小 EXE，和 fsx/SimConnect.dll 一起放在客户端的 fsx 目录。
+      dotnet publish src/CanClient.SimBridge -c Release -o <客户端目录>/fsx
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>can-simconnect</AssemblyName>
+    <RootNamespace>CanClient.SimBridge</RootNamespace>
+    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+    <PlatformTarget>x86</PlatformTarget>
+    <PublishAot>true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\native\fsx\SimConnect.dll" Link="SimConnect.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

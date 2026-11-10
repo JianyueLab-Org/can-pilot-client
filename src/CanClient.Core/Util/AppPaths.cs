@@ -18,7 +18,7 @@ public static class AppPaths
     /// <summary>是不是从 macOS 的 .app 包里运行。</summary>
     public static bool InMacAppBundle =>
         OperatingSystem.IsMacOS() && Path.TrimEndingDirectorySeparator(ProgramDirectory)
-            .EndsWith(Path.Combine(".app", "Contents", "MacOS"), StringComparison.OrdinalIgnoreCase);
+            .EndsWith(".app" + Path.DirectorySeparatorChar + "Contents" + Path.DirectorySeparatorChar + "MacOS", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>随程序发布的数据文件（模型匹配数据、X-Plane 插件包、许可证）所在目录。</summary>
     public static string ResourceDirectory => InMacAppBundle

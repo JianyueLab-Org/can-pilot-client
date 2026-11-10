@@ -2,13 +2,25 @@ using System.Xml.Serialization;
 
 namespace CanClient.Core.ModelMatching;
 
-/// <summary>连上的是哪个模拟器。决定扫哪套目录、用哪套默认模型和内置规则。</summary>
+/// <summary>
+/// 连上的是哪个模拟器。决定扫哪套目录、用哪套默认模型和内置规则。
+/// FSX / P3D 各版本照 vPilot 分开：安装位置、SimObjects 配置和扫描结果都是一版一份。
+/// 配置和扫描缓存按名字存，新值只能往后加。
+/// </summary>
 public enum SimulatorType
 {
     None,
     Msfs,
     Msfs2024,
-    XPlane
+    XPlane,
+    Fsx,
+    FsxSe,
+    Prepar3d,
+    Prepar3dV2,
+    Prepar3dV3,
+    Prepar3dV4,
+    Prepar3dV5,
+    Prepar3dV6
 }
 
 /// <summary>
@@ -28,11 +40,38 @@ public enum ModelStatus
 
 public static class SimulatorTypeExtensions
 {
+    /// <summary>FSX、FSX:SE 和 P3D v1–v6，设置里依次列出。</summary>
+    public static readonly SimulatorType[] Legacy =
+    [
+        SimulatorType.Fsx, SimulatorType.FsxSe, SimulatorType.Prepar3d, SimulatorType.Prepar3dV2,
+        SimulatorType.Prepar3dV3, SimulatorType.Prepar3dV4, SimulatorType.Prepar3dV5, SimulatorType.Prepar3dV6
+    ];
+
+    public static bool IsMsfs(this SimulatorType type) => type is SimulatorType.Msfs or SimulatorType.Msfs2024;
+
+    public static bool IsFsx(this SimulatorType type) => type is SimulatorType.Fsx or SimulatorType.FsxSe;
+
+    public static bool IsPrepar3d(this SimulatorType type) => type is >= SimulatorType.Prepar3d and <= SimulatorType.Prepar3dV6;
+
+    /// <summary>FSX / P3D：通过 32 位 FSX SimConnect 客户端（桥接进程）接入。</summary>
+    public static bool IsLegacy(this SimulatorType type) => type.IsFsx() || type.IsPrepar3d();
+
+    /// <summary>走 SimConnect、用 aircraft.cfg 扫描和 VMR 模型匹配的模拟器（除 X-Plane 以外的全部）。</summary>
+    public static bool UsesSimConnect(this SimulatorType type) => type.IsMsfs() || type.IsLegacy();
+
     public static string DisplayName(this SimulatorType type) => type switch
     {
         SimulatorType.Msfs => "MSFS",
         SimulatorType.Msfs2024 => "MSFS 2024",
         SimulatorType.XPlane => "X-Plane",
+        SimulatorType.Fsx => "FSX",
+        SimulatorType.FsxSe => "FSX:SE",
+        SimulatorType.Prepar3d => "P3D v1",
+        SimulatorType.Prepar3dV2 => "P3D v2",
+        SimulatorType.Prepar3dV3 => "P3D v3",
+        SimulatorType.Prepar3dV4 => "P3D v4",
+        SimulatorType.Prepar3dV5 => "P3D v5",
+        SimulatorType.Prepar3dV6 => "P3D v6",
         _ => "未连接"
     };
 
@@ -41,6 +80,14 @@ public static class SimulatorTypeExtensions
         SimulatorType.Msfs => "Microsoft Flight Simulator",
         SimulatorType.Msfs2024 => "Microsoft Flight Simulator 2024",
         SimulatorType.XPlane => "X-Plane 11 / 12",
+        SimulatorType.Fsx => "Microsoft Flight Simulator X",
+        SimulatorType.FsxSe => "Flight Simulator X Steam Edition",
+        SimulatorType.Prepar3d => "Lockheed Martin Prepar3D",
+        SimulatorType.Prepar3dV2 => "Lockheed Martin Prepar3D v2",
+        SimulatorType.Prepar3dV3 => "Lockheed Martin Prepar3D v3",
+        SimulatorType.Prepar3dV4 => "Lockheed Martin Prepar3D v4",
+        SimulatorType.Prepar3dV5 => "Lockheed Martin Prepar3D v5",
+        SimulatorType.Prepar3dV6 => "Lockheed Martin Prepar3D v6",
         _ => "未知模拟器"
     };
 
@@ -48,12 +95,24 @@ public static class SimulatorTypeExtensions
     public static string DefaultModel(this SimulatorType type) => type switch
     {
         SimulatorType.Msfs2024 => "Asobo PassiveAircraft E190",
+        SimulatorType.Fsx or SimulatorType.FsxSe => "Airbus A321",
+        _ when type.IsPrepar3d() => "Bombardier CRJ 700",
         _ => "Generic Airliner Twin Engines Asobo 00"
     };
 
-    /// <summary>SIMCONNECT_RECV_OPEN 里的程序主版本号 → 模拟器。11 是 MSFS 2020，12 是 2024。</summary>
-    public static SimulatorType FromApplicationVersion(int major) => major switch
+    /// <summary>
+    /// SIMCONNECT_RECV_OPEN 里的程序版本 → 模拟器（vPilot Method_06000668）：
+    /// 10 是 FSX（构建号 62000 以上是 Steam 版），1–6 是 P3D 各大版本，11 是 MSFS 2020，12 是 2024。
+    /// </summary>
+    public static SimulatorType FromApplicationVersion(int major, int build = 0) => major switch
     {
+        10 => build < 62000 ? SimulatorType.Fsx : SimulatorType.FsxSe,
+        1 => SimulatorType.Prepar3d,
+        2 => SimulatorType.Prepar3dV2,
+        3 => SimulatorType.Prepar3dV3,
+        4 => SimulatorType.Prepar3dV4,
+        5 => SimulatorType.Prepar3dV5,
+        6 => SimulatorType.Prepar3dV6,
         11 => SimulatorType.Msfs,
         12 => SimulatorType.Msfs2024,
         _ => SimulatorType.None

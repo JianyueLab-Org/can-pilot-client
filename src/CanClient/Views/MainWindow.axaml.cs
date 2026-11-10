@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        NiriFloating.Apply(this);
     }
 
     private MainWindowViewModel Vm => (MainWindowViewModel)DataContext!;
@@ -152,6 +153,69 @@ public partial class MainWindow : Window
     private async void OnCheckUpdateClick(object? sender, RoutedEventArgs e) => await Vm.CheckForUpdateAsync(manual: true);
 
     private void OnOpenLogClick(object? sender, RoutedEventArgs e) => Log.OpenFolder();
+
+    private async void OnPrivacyClick(object? sender, RoutedEventArgs e)
+    {
+        var status = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        var export = new Button { Content = "导出本地个人数据（不含密码）" };
+        var erase = new Button { Content = "清除本地账号、飞行计划与日志" };
+        var panel = new StackPanel { Spacing = 10 };
+        panel.Children.Add(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Text = "连接 CAN 网络会向 FSD/语音服务器发送 CID、姓名、呼号、飞行状态、消息及按下 PTT 时的语音；其他在线成员可能收到公开飞行信息。" +
+                   "客户端不录制语音、不上传诊断日志、不含分析追踪。日志仅本机保存，启动和跨日时自动清理超过 7 个日历日的日志。" +
+                   "密码默认不保存；macOS 使用钥匙串，Linux 使用 Secret Service（需 secret-tool），不可用时不保存。" +
+                   "FSD 当前为明文 TCP，连接前请知悉此传输限制。服务器保存期限、访问/更正/删除请求及法律依据需向 CAN 服务运营方确认。" +
+                   "本地导出与清除不代表删除服务器上的数据。"
+        });
+        panel.Children.Add(export);
+        panel.Children.Add(erase);
+        panel.Children.Add(status);
+        export.Click += (_, _) =>
+        {
+            try
+            {
+                var settings = Vm.Controller.Settings;
+                var json = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    exportedAt = DateTimeOffset.UtcNow, settings.Cid, settings.RealName, settings.Callsign,
+                    settings.Aircraft, settings.Selcal, settings.FlightPlan
+                }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                var path = System.IO.Path.Combine(AppPaths.DataDirectory, "personal-data-export.json");
+                PrivateFiles.Write(path, json);
+                status.Text = $"已导出至 {path}。该文件含个人数据，请妥善保存，用后删除。";
+            }
+            catch { status.Text = "导出失败，请检查数据目录权限。"; }
+        };
+        erase.Click += async (_, _) =>
+        {
+            if (Vm.IsConnected) { status.Text = "请先断开网络，再清除本地数据。"; return; }
+            if (await ShowDialogAsync(new DialogView("清除本地数据",
+                    new TextBlock { Text = "将清除本地账号信息、系统保存的密码、飞行计划及日志。继续？", TextWrapping = TextWrapping.Wrap }, "清除")) != DialogResult.Primary)
+                return;
+            try
+            {
+                var settings = Vm.Controller.Settings;
+                CanClient.Core.Settings.CredentialStore.Save(null);
+                settings.RememberPassword = false;
+                settings.Cid = settings.Password = settings.RealName = settings.Callsign = settings.Aircraft = settings.Selcal = "";
+                settings.FlightPlan.Clear();
+                settings.Save(throwOnError: true);
+                if (File.Exists(settings.Path))
+                {
+                    var saved = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(settings.Path));
+                    if (saved?["cid"]?.GetValue<string>() != "") throw new IOException();
+                }
+                Vm.ClearMessages();
+                File.Delete(System.IO.Path.Combine(AppPaths.DataDirectory, "personal-data-export.json"));
+                Log.DeleteLocalLogs();
+                status.Text = "本地个人数据已清除。请退出并重新打开客户端以释放会话中的临时数据。";
+            }
+            catch { status.Text = "清除未完成，请检查系统凭据库及数据目录权限后重试。"; }
+        };
+        await ShowDialogAsync(new DialogView("隐私与本地数据", new ScrollViewer { Content = panel, MaxHeight = 380 }, null, closeText: "关闭"));
+    }
 
     private async Task ShowUpdateAsync(UpdateInfo update)
     {

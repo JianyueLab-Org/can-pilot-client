@@ -98,7 +98,7 @@ public sealed class ClientController : IDisposable
         Sim.Opened += (simulator, name) =>
         {
             Post(MessageKind.System, $"已连接到模拟器：{name}");
-            if (simulator != SimulatorType.XPlane) _ = Models.SetSimulatorAsync(simulator);
+            if (simulator.UsesSimConnect()) _ = Models.SetSimulatorAsync(simulator);
             InvalidateModels();
         };
         _injectionLoop = new InjectionLoop(InjectFrame);
@@ -174,7 +174,7 @@ public sealed class ClientController : IDisposable
             return "请先在“设置 → 网络”里填写 CID 和密码。";
         // 没有模拟器位置时不能登录 FSD：否则服务端保留一条没有有效位置的连接
         if (!observer && !Sim.Connected)
-            return $"还没有连上 {(PlatformSupport.SupportsMsfs ? "MSFS / X-Plane" : "X-Plane")}，或者还没进入飞行。观察员模式可以不开模拟器。";
+            return $"还没有连上 {(PlatformSupport.SupportsMsfs ? "MSFS / P3D / FSX / X-Plane" : "X-Plane")}，或者还没进入飞行。观察员模式可以不开模拟器。";
         if (!observer && Sim.NeedsSelection)
             return "检测到两个模拟器，请先在主页出现的模拟器选择框中选择本次使用的模拟器。";
 
@@ -212,6 +212,8 @@ public sealed class ClientController : IDisposable
         {
             SimulatorType.XPlane => FsdProtocol.SimulatorXPlane,
             SimulatorType.Msfs2024 => FsdProtocol.SimulatorMsfs2024,
+            var s when s.IsFsx() => FsdProtocol.SimulatorFsx,
+            var s when s.IsPrepar3d() => FsdProtocol.SimulatorP3d,
             _ => FsdProtocol.SimulatorMsfs2020
         };
         var fsd = new FsdClient(Settings.FsdHostName, Settings.FsdPortNumber, _callsign, Settings.Cid, Settings.Password,
@@ -468,13 +470,14 @@ public sealed class ClientController : IDisposable
             _origin = (own.Latitude, own.Longitude);
             return;
         }
-        if (_injector is null || _injector.Generation != Sim.Msfs.Generation)
+        var simConnect = Sim.ActiveSimConnect;
+        if (_injector is null || _injector.Connection != simConnect || _injector.Generation != simConnect?.Generation)
         {
             _injector?.Dispose();
             _injector = null;
-            if (Sim.IsOpen && Sim.Simulator != SimulatorType.None)
+            if (simConnect is not null && Sim.IsOpen && Sim.Simulator != SimulatorType.None)
             {
-                var injector = new TrafficInjector(Sim.Msfs);
+                var injector = new TrafficInjector(simConnect);
                 injector.Frame += _injectionLoop.FrameArrived;
                 injector.CreateFailed += OnCreateFailed;
                 _injector = injector;
@@ -501,7 +504,8 @@ public sealed class ClientController : IDisposable
         {
             if (_models.TryGetValue(entry.Callsign, out var cached) && !entry.ModelDirty
                 && cached.Equipment == entry.Equipment && cached.Airline == entry.Airline
-                && !Models.Matcher.IsErroneous(cached.Result.ModelName))
+                // 默认模型也建不出来时重配还是它，别每次都重配一遍
+                && (cached.Result.IsDefault || !Models.Matcher.IsErroneous(cached.Result.ModelName)))
                 return cached.Result;
         }
         var previous = _models.GetValueOrDefault(entry.Callsign).Result?.ModelName;
@@ -533,10 +537,12 @@ public sealed class ClientController : IDisposable
 
     private void OnCreateFailed(string callsign, string model)
     {
-        Models.MarkErroneous(model);
+        var first = Models.MarkErroneous(model);
         lock (_lock)
             _models.Remove(callsign);
-        Post(MessageKind.Error, $"模拟器无法生成模型 {model}（{callsign}），已改用其他模型。");
+        // 同一个模型只提示一次：几架飞机、几帧连着失败时别把消息区刷爆
+        if (first)
+            Post(MessageKind.Error, $"模拟器无法生成模型 {model}（{callsign}），已改用其他模型。");
     }
 
     /// <summary>注入循环的一帧：积分到此刻，写进模拟器。在注入线程上。</summary>
@@ -564,8 +570,14 @@ public sealed class ClientController : IDisposable
         if (_plannedEntries is null || models is null || _origin is null)
             return;
         var entries = Traffic.Snapshot(origin: _origin, limit: Settings.MaxAircraft, maxRangeNm: Settings.TrafficRangeNm);
+        // 拉黑了的模型在下次规划换掉之前别再拿去建，否则每帧都建一次、失败一次
+        var matcher = Models.Matcher;
         var targets = entries
-            .Select(e => new InjectionTarget(e, models.GetValueOrDefault(e.Callsign, "")))
+            .Select(e =>
+            {
+                var model = models.GetValueOrDefault(e.Callsign, "");
+                return new InjectionTarget(e, model.Length > 0 && matcher.IsErroneous(model) ? "" : model);
+            })
             .ToList();
         injector.Sync(targets, TrafficTable.Now());
     }

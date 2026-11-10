@@ -3,7 +3,7 @@
              xmlns:vm="using:CanClient.ViewModels"
              x:Class="CanClient.Views.Settings.ModelMatchingPage"
              x:DataType="vm:SettingsViewModel">
-  <!-- vPilot SettingsPanelModelMatching，加上包目录、数据库信息和匹配测试 -->
+  <!-- vPilot SettingsPanelModelMatching，加上包目录（FSX / P3D 是安装目录）、数据库信息和匹配测试。MSFS、FSX、P3D 各版本共用 -->
   <StackPanel Spacing="{DynamicResource Space.Sm}">
     <StackPanel Orientation="Horizontal" Spacing="6">
       <TextBlock Classes="muted" Text="模拟器" />
@@ -29,10 +29,9 @@
       <Button Content="重置" Command="{Binding ResetDefaultModelCommand}" />
     </StackPanel>
 
-    <TextBlock Classes="label" Margin="0,6,0,0" TextWrapping="Wrap"
-               Text="MSFS 包目录（含 Official 和 Community 的那一层，留空则读 UserCfg.opt）" />
+    <TextBlock Classes="label" Margin="0,6,0,0" TextWrapping="Wrap" Text="{Binding PackagesPathLabel}" />
     <StackPanel Orientation="Horizontal" Spacing="6">
-      <TextBox Width="280" Classes="mono" Text="{Binding PackagesPath}" PlaceholderText="自动" />
+      <TextBox Width="280" Classes="mono" Text="{Binding PackagesPath}" PlaceholderText="{Binding PackagesPathPlaceholder}" />
       <Button Content="浏览..." Click="OnBrowseClick" />
     </StackPanel>
 

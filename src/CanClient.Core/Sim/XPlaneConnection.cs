@@ -53,6 +53,29 @@ public sealed class XPlaneConnection(AppSettings settings) : IDisposable
     public string Address => _address?.ToString() ?? "等待发现 X-Plane";
     public bool Connected => Snapshot() is not null;
 
+    /// <summary>发现了 X-Plane 却收不到数据时给用户看的原因；收到数据或 X-Plane 不在了就清掉。</summary>
+    public string? Problem { get; private set; }
+    public event Action<string?>? ProblemChanged;
+
+    private void SetProblem(string? problem)
+    {
+        if (Problem == problem) return;
+        Problem = problem;
+        if (problem is not null) Log.Warning(problem);
+        ProblemChanged?.Invoke(problem);
+    }
+
+    /// <summary>信标到了、订阅没回包：几乎都是 X-Plane 12 默认关着的“接受传入连接”，prf 里能确认时说得更肯定。</summary>
+    internal static string SilentProblem(bool? incomingDisabled) => incomingDisabled == true
+        ? "X-Plane 关闭了“接受传入连接”，客户端收不到机位数据。请在 X-Plane 设置 → 网络（Network）中打开 Accept incoming connections；或者退出 X-Plane，在本客户端 设置 → X-Plane 中点“开启 X-Plane 网络连接”。"
+        : "已发现 X-Plane，但它不回应数据请求。请确认 X-Plane 设置 → 网络（Network）中的 Accept incoming connections（接受传入连接）已打开，并检查防火墙是否拦截了 X-Plane 的 UDP。";
+
+    private bool? IncomingDisabled()
+    {
+        var states = XPlaneInstallation.Roots(settings.XPlanePath).Select(XPlaneInstallation.IncomingNetworkingDisabled).ToArray();
+        return states.Contains(true) ? true : states.Contains(false) ? false : null;
+    }
+
     private static bool PositionFresh(IReadOnlyDictionary<string, DateTime> updated, DateTime now) =>
         new[] { "lat", "lon", "elevation" }.All(key => updated.TryGetValue(key, out var time) && now - time < TimeSpan.FromSeconds(3));
     private readonly Dictionary<string, DateTime> _updated = new();
@@ -71,7 +94,9 @@ public sealed class XPlaneConnection(AppSettings settings) : IDisposable
 
     internal bool Handle(byte[] bytes)
     {
-        if (bytes.Length < 13 || !bytes.AsSpan(0, 5).SequenceEqual("RREF\0"u8) || (bytes.Length - 5) % 8 != 0)
+        // 只认前 4 个字节：Laminar 文档写回包头是 "RREF"+0，实际 X-Plane 11 / 12 发的是 "RREF,"（第 5 个字节是逗号）。
+        // 按 "RREF\0" 比 5 个字节会把 X-Plane 的每个回包都丢掉，表现为“发现了 X-Plane 却一直没数据”。
+        if (bytes.Length < 13 || !bytes.AsSpan(0, 4).SequenceEqual("RREF"u8) || (bytes.Length - 5) % 8 != 0)
             return false;
         var valid = false;
         lock (_gate)
@@ -127,14 +152,25 @@ public sealed class XPlaneConnection(AppSettings settings) : IDisposable
 
     private async Task RunAsync(CancellationToken token)
     {
+        string? reported = null;
+        IPEndPoint? silentBeacon = null;
         while (!token.IsCancellationRequested)
         {
             UdpClient? udp = null;
             IPEndPoint? address = null;
+            var source = "fallback";
             try
             {
                 try { address = await DiscoverAsync(token); }
-                catch (SocketException e) { Log.Debug($"beacon discovery: {e.Message}"); }
+                catch (SocketException e) { Log.Info($"beacon discovery failed: {e.Message}"); }
+                if (address is not null) source = string.IsNullOrWhiteSpace(settings.XPlaneHost) ? "beacon" : "settings";
+                // 多网卡时信标可能来自一个收不到回包的虚拟网卡地址；上次它没回数据，这次改走本机回环。
+                if (source == "beacon" && address!.Equals(silentBeacon))
+                {
+                    address = new IPEndPoint(IPAddress.Loopback, address.Port);
+                    source = "loopback retry";
+                    silentBeacon = null;
+                }
                 address ??= _address ?? new IPEndPoint(IPAddress.Loopback, 49000);
                 udp = new UdpClient(AddressFamily.InterNetwork);
                 udp.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
@@ -151,19 +187,38 @@ public sealed class XPlaneConnection(AppSettings settings) : IDisposable
                     await udp.SendAsync(Subscription(i, Datarefs[i].Ref), address, token);
                 Log.Debug($"subscribed to {Datarefs.Length} datarefs at {address}");
                 var silent = DateTime.UtcNow;
+                var receiving = false;
                 while (DateTime.UtcNow - silent < TimeSpan.FromSeconds(10))
                 {
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                     timeout.CancelAfter(500);
                     try
                     {
+                        // 套接字是本次订阅专用的临时端口，只认 RREF 格式即可；X-Plane 的回包源地址/端口
+                        // 不一定等于信标里的地址（多网卡、回包端口不同），严格比对会把有效数据全部丢掉。
                         var packet = await udp.ReceiveAsync(timeout.Token);
-                        if (packet.RemoteEndPoint.Equals(address) && Handle(packet.Buffer)) silent = DateTime.UtcNow;
+                        if (!Handle(packet.Buffer)) continue;
+                        silent = DateTime.UtcNow;
+                        if (receiving) continue;
+                        receiving = true;
+                        SetProblem(null);
+                        var state = $"ok {packet.RemoteEndPoint}";
+                        if (reported != state)
+                            Log.Info($"receiving datarefs from {packet.RemoteEndPoint} (subscribed at {address} via {source})");
+                        reported = state;
                     }
                     catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
                     catch (SocketException) { await Task.Delay(200, token); }
                     token.ThrowIfCancellationRequested();
                 }
+                // 同一个地址只记一次，模拟器没开时不会每 10 秒刷屏。
+                var silence = $"silent {address}";
+                if (reported != silence)
+                    Log.Info($"no RREF reply from {address} (via {source}) for 10 s; X-Plane not running, or its network/firewall is blocking UDP");
+                reported = silence;
+                if (source == "beacon") silentBeacon = address;
+                // 有信标说明 X-Plane 开着；没信标、也没回包就是没开，不算问题
+                SetProblem(source is "beacon" or "loopback retry" ? SilentProblem(IncomingDisabled()) : null);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
             catch (Exception e) { Log.Warning($"X-Plane connection: {e.Message}"); }

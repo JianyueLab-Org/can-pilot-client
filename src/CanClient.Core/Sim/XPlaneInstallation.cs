@@ -37,6 +37,59 @@ public static class XPlaneInstallation
         }
         return result.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
+    /// <summary>设置里选的目录有效就用它，否则用 X-Plane 安装器登记的那些。</summary>
+    public static string[] Roots(string configured) =>
+        IsXPlane(configured) ? [configured.Trim()] : FindInstalls();
+
+    /// <summary>
+    /// X-Plane 12 的“设置 → 网络 → 接受传入连接”（Accept incoming connections），存在 X-Plane.prf 里。
+    /// 新装的 X-Plane 12 默认关着：多播信标照发，但不回应 RREF 订阅，客户端就一直拿不到机位。
+    /// </summary>
+    private const string IncomingNetworkingKey = "_disable_incoming_networking";
+
+    public static string PreferencesFile(string xplane) => Path.Combine(xplane, "Output", "preferences", "X-Plane.prf");
+
+    /// <summary>true：传入连接关着；false：开着；null：读不到（没运行过、X-Plane 11 没有这一项）。
+    /// X-Plane 退出时才写 prf，运行中在模拟器里改的开关要等退出后才反映到这里。</summary>
+    public static bool? IncomingNetworkingDisabled(string xplane)
+    {
+        try
+        {
+            var file = PreferencesFile(xplane);
+            if (!File.Exists(file)) return null;
+            foreach (var line in File.ReadLines(file))
+            {
+                var parts = line.Split(' ', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 2 && parts[0] == IncomingNetworkingKey) return parts[1] != "0";
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        return null;
+    }
+
+    /// <summary>把 prf 里的“接受传入连接”打开。X-Plane 退出时会用内存里的设置覆盖 prf，所以必须先退出 X-Plane。</summary>
+    public static void EnableIncomingNetworking(string xplane)
+    {
+        if (SimulatorProcesses.XPlaneRunning)
+            throw new InvalidOperationException("X-Plane 正在运行：请直接在 X-Plane 设置 → 网络 中打开“接受传入连接”，或先退出 X-Plane 再点这里。");
+        var file = PreferencesFile(xplane);
+        if (!File.Exists(file)) throw new FileNotFoundException("没有找到 X-Plane.prf，请先运行一次 X-Plane 再退出。", file);
+        var lines = File.ReadAllText(file).Split('\n');
+        var changed = false;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var parts = lines[i].Split(' ', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2 || parts[0] != IncomingNetworkingKey || parts[1] == "0") continue;
+            lines[i] = IncomingNetworkingKey + " 0" + (lines[i].EndsWith('\r') ? "\r" : "");
+            changed = true;
+        }
+        if (!changed) return;
+        File.Copy(file, file + ".can-backup", true);
+        File.WriteAllText(file, string.Join('\n', lines));
+        Log.For("xp-install").Info($"enabled incoming networking in {file}");
+    }
+
     public static string FindCsl(string xplane)
     {
         string[] known = ["IVAO_CSL/CSL", "xPilot/Resources/CSL", "LiveTraffic/Resources/CSL", "XSquawkBox/Resources/CSL", "X-CSL", "XPC_for_CAN/CSL"];

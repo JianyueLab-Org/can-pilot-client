@@ -13,7 +13,7 @@ public sealed record ServerList(IReadOnlyList<ServerEntry> Audio, IReadOnlyList<
 /// <summary>公共服务器目录；只接收 Mumble 和明文 FSD 端点。对应 Python 版 serverdirectory.py。</summary>
 public static class ServerDirectory
 {
-    public const string DefaultUrl = "https://ceruleanavi.net/api/v1/servers";
+    public const string DefaultUrl = "https://api.ceruleanavi.net/api/v1/servers";
 
     private static readonly Logger Log = Util.Log.For("serverdirectory");
 

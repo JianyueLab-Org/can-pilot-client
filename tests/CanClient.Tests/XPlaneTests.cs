@@ -14,6 +14,38 @@ namespace CanClient.Tests;
 public class XPlaneTests
 {
     [Fact]
+    public void IncomingNetworkingIsReadFromPrfAndEnabledInPlace()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "canclient-xp-" + Guid.NewGuid().ToString("N"));
+        var prefs = Path.Combine(root, "Output", "preferences");
+        Directory.CreateDirectory(prefs);
+        try
+        {
+            Assert.Null(XPlaneInstallation.IncomingNetworkingDisabled(root));
+            var file = XPlaneInstallation.PreferencesFile(root);
+            const string original = "I\r\n10 Version\r\n_rcv_port 49000\r\n_disable_incoming_networking 1\r\n_snd_track_view_19 1\r\n";
+            File.WriteAllText(file, original);
+            Assert.True(XPlaneInstallation.IncomingNetworkingDisabled(root));
+            // 运行着的 X-Plane 退出时会覆盖 prf，所以那种情况下拒绝修改；这台机器正开着 X-Plane 时跳过
+            if (SimulatorProcesses.XPlaneRunning) return;
+            XPlaneInstallation.EnableIncomingNetworking(root);
+            Assert.False(XPlaneInstallation.IncomingNetworkingDisabled(root));
+            Assert.Equal(original.Replace("_disable_incoming_networking 1", "_disable_incoming_networking 0"), File.ReadAllText(file));
+            Assert.Equal(original, File.ReadAllText(file + ".can-backup"));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void SilentXPlaneProblemNamesTheNetworkSetting()
+    {
+        Assert.Contains("关闭了", XPlaneConnection.SilentProblem(true));
+        Assert.Contains("Accept incoming connections", XPlaneConnection.SilentProblem(true));
+        Assert.Contains("Accept incoming connections", XPlaneConnection.SilentProblem(null));
+        Assert.Contains("防火墙", XPlaneConnection.SilentProblem(false));
+    }
+
+    [Fact]
     public void XPlaneStateConvertsUnitsRadiosAndIdent()
     {
         var state = XPlaneConnection.BuildState(new Dictionary<string, double>
@@ -54,7 +86,7 @@ public class XPlaneTests
     public void RrefRejectsMalformedPacketsAndRequiresPosition()
     {
         using var xp = new XPlaneConnection(new AppSettings());
-        Assert.False(xp.Handle("RREF\0"u8.ToArray()));
+        Assert.False(xp.Handle("RREF,"u8.ToArray()));
         var packet = Rref((0, 31), (1, 121), (2, 1000), (-1, 1), (999, 3));
         Assert.True(xp.Handle(packet));
         Assert.NotNull(xp.Snapshot());
@@ -143,10 +175,26 @@ public class XPlaneTests
     }
 
 
+    [Theory]
+    [InlineData((byte)',')]
+    [InlineData((byte)0)]
+    public void RrefAcceptsTheHeaderXPlaneActuallySends(byte fifth)
+    {
+        // X-Plane 11 / 12 实际发的是 "RREF,"，文档写的是 "RREF"+0，两种都要收
+        using var xp = new XPlaneConnection(new AppSettings());
+        var packet = Rref((0, 31), (1, 121), (2, 1000));
+        packet[4] = fifth;
+        Assert.True(xp.Handle(packet));
+        Assert.NotNull(xp.Snapshot());
+        packet[0] = (byte)'D';
+        Assert.False(xp.Handle(packet));
+    }
+
+    /// <summary>和真实 X-Plane 一样用 "RREF," 做包头。</summary>
     private static byte[] Rref(params (int Index, float Value)[] values)
     {
         var bytes = new byte[5 + values.Length * 8];
-        "RREF\0"u8.CopyTo(bytes);
+        "RREF,"u8.CopyTo(bytes);
         for (var i = 0; i < values.Length; i++)
         {
             BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(5 + i * 8), values[i].Index);

@@ -64,7 +64,7 @@ public static class ModelScanStore
     }
 
     /// <summary>缓存还能不能用。返回 null 表示可以；否则返回要重扫的原因（写日志、给界面看）。</summary>
-    public static string? NeedsRescan(ModelScanResult? cached, MsfsInstallation installation)
+    public static string? NeedsRescan(ModelScanResult? cached, ISimulatorInstallation installation)
     {
         if (cached is null)
             return "还没有扫描过";

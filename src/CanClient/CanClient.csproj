@@ -25,6 +25,42 @@
     <None Update="**\can-pilot.debug.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
+  <!--
+    FSX / P3D 的 SimConnect 桥接进程（32 位 NativeAOT）和 32 位 SimConnect.dll 放在输出目录的 fsx 子目录，
+    不打进单文件 EXE。只在 Windows 上构建；需要 VS 的 C++ 工具（和 RNNoise 一样）。没有的话只是接不了 FSX / P3D，
+    构建照常完成。-p:SkipSimConnectBridge=true 可以跳过。
+  -->
+  <PropertyGroup>
+    <SimBridgeProject>$(MSBuildThisFileDirectory)..\CanClient.SimBridge\CanClient.SimBridge.csproj</SimBridgeProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <SimBridgeInput Include="..\CanClient.SimBridge\*.cs;..\CanClient.SimBridge\*.csproj;..\..\native\fsx\SimConnect.dll" />
+  </ItemGroup>
+
+  <!-- OutDir 要到 SDK 的 targets 里才定下来，所以在目标里取 -->
+  <Target Name="SimBridgePaths">
+    <PropertyGroup>
+      <SimBridgeOutput>$(OutDir)fsx</SimBridgeOutput>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="PublishSimConnectBridge" AfterTargets="Build" DependsOnTargets="SimBridgePaths"
+          Condition="'$(CanTargetsWindows)' == 'true' and $([MSBuild]::IsOSPlatform('Windows')) and '$(SkipSimConnectBridge)' != 'true' and '$(DesignTimeBuild)' != 'true'"
+          Inputs="@(SimBridgeInput)" Outputs="$(SimBridgeOutput)\can-simconnect.exe;$(SimBridgeOutput)\SimConnect.dll">
+    <!-- VS 不在默认位置时，它的 vcvarsall 会按 PATH 找 vswhere.exe -->
+    <Exec Command="dotnet publish &quot;$(SimBridgeProject)&quot; -c Release -o &quot;$(SimBridgeOutput)&quot; -nologo -v:q"
+          EnvironmentVariables="PATH=$([MSBuild]::Escape('$(PATH);$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer'))"
+          ContinueOnError="WarnAndContinue" />
+  </Target>
+
+  <Target Name="PublishSimConnectBridgeFiles" AfterTargets="Publish" DependsOnTargets="SimBridgePaths">
+    <ItemGroup>
+      <SimBridgeFile Include="$(SimBridgeOutput)\can-simconnect.exe;$(SimBridgeOutput)\SimConnect.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SimBridgeFile)" DestinationFolder="$(PublishDir)fsx" SkipUnchangedFiles="true"
+          Condition="Exists('$(SimBridgeOutput)\can-simconnect.exe')" />
+  </Target>
+
   <Target Name="ExcludeNativeDebugSymbolsFromSingleFilePublish" AfterTargets="ComputeFilesToPublish"
           Condition="'$(PublishSingleFile)' == 'true'">
     <ItemGroup>

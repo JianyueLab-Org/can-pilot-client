@@ -1,7 +1,7 @@
 # CAN Pilot Client
 
-CAN 连飞网络的统一飞行员客户端，支持 Microsoft Flight Simulator（2020 / 2024）与 X-Plane（11.50+ / 12），C# / .NET 10 实现。
-同一套代码发布 Windows、macOS、Linux 三个平台：Windows 版同时支持 MSFS 和 X-Plane；macOS（一个通用包同时支持 Apple Silicon 和 Intel）和 Linux x64（以 Arch 为主，其他发行版用通用 tar.gz）版只接 X-Plane（MSFS 依赖 Windows 上的 SimConnect），FSD、语音、PTT、消息和设置在三个平台上一致。
+CAN 连飞网络的统一飞行员客户端，支持 Microsoft Flight Simulator（2020 / 2024）、Prepar3D（v1–v6）、FSX / FSX:SE 与 X-Plane（11.50+ / 12），C# / .NET 10 实现。
+同一套代码发布 Windows、macOS、Linux 三个平台：Windows 版同时支持 MSFS、P3D、FSX 和 X-Plane；macOS（仅 Apple Silicon ARM64）和 Linux x64（通用 tar.gz）版只接 X-Plane（MSFS 依赖 Windows 上的 SimConnect），FSD、语音、PTT、消息和设置在三个平台上一致。
 已整合 [can-xplane-client](https://github.com/JianyueLab-Org/can-xplane-client) 的模拟器接入和原生交通插件协议，两种模拟器共用同一个 EXE、FSD、C# 语音引擎、消息和设置，不需要 Python 语音进程。
 界面基于 [can-client-ui](https://github.com/JianyueLab-Org/can-client-ui)（Avalonia，布局参考 vPilot），
 他机模型匹配按 vPilot 的做法实现。
@@ -11,8 +11,10 @@ CAN 连飞网络的统一飞行员客户端，支持 Microsoft Flight Simulator�
 
 ## 环境
 
-- Windows x64、macOS 12+（arm64 / x64）或 Linux x64，[.NET 10 SDK](https://dotnet.microsoft.com/download)。
-- 实际联飞需要启动 MSFS（仅 Windows）或 X-Plane，准备 CAN 账号，并能访问所选语音 / FSD 服务器。
+隐私与数据处理说明见 [PRIVACY.md](PRIVACY.md)。Linux/macOS 使用 can-client-ui 的跨平台窗口、字体和矢量图标适配；macOS 支持无边框窗口边缘缩放，niri 下主窗口浮动打开。
+
+- Windows x64、macOS 12+（仅 Apple Silicon ARM64）或 Linux x64，[.NET 10 SDK](https://dotnet.microsoft.com/download)。
+- 实际联飞需要启动 MSFS / P3D / FSX（仅 Windows）或 X-Plane，准备 CAN 账号，并能访问所选语音 / FSD 服务器。
 - 可选：RNNoise 麦克风降噪。Windows 需要 CMake + Visual Studio 2022 Build Tools（C++ 桌面开发）；macOS / Linux 需要 CMake 和 C 编译器（Xcode 命令行工具 / gcc）。
 
 ## 运行与构建
@@ -28,10 +30,10 @@ pwsh -File build.ps1                        # Windows：构建 RNNoise、准备 
 ```
 
 构建脚本采用 .NET 10 Windows x64 自包含单文件发布，无需安装 .NET；托管依赖和原生 DLL 打进 EXE，
-原生库在运行时自动解压到 .NET 缓存。分发整个 `dist/can-pilot/`（EXE、MSFS 模型库、X-Plane 插件压缩包、许可证及来源说明），入口为 `can-pilot.exe`。版本系列 `3.0` 写在 `Directory.Build.props`；
+原生库在运行时自动解压到 .NET 缓存。分发整个 `dist/can-pilot/`（EXE、`fsx/` 下的 P3D / FSX SimConnect 桥接、MSFS 模型库、X-Plane 插件压缩包、许可证及来源说明），入口为 `can-pilot.exe`。版本系列 `3.0` 写在 `Directory.Build.props`；
 也可在构建前设置 `$env:CAN_VERSION` 覆盖，程序标题和版本检查与发布包保持一致。
 
-macOS / Linux 同样是自包含单文件发布。macOS 默认输出通用的 `dist/CAN Pilot.app`：里面是 arm64 和 x64 两份单文件程序，外加一个通用的小入口（`tools/macos-launcher.c`）按本机芯片启动对应那份（.NET 单文件程序不能用 lipo 合并）；`tools/make-macos-app.sh` 生成 Info.plist、图标并做 ad-hoc 签名。Linux 输出 `dist/can-pilot/` 和 tar.gz，入口为 `can-pilot`。
+macOS / Linux 同样是自包含单文件发布。macOS 输出仅支持 Apple Silicon ARM64 的 `dist/CAN Pilot.app`，内含一份 ARM64 单文件程序；`tools/make-macos-app.sh` 生成 Info.plist、图标并做 ad-hoc 签名。Linux 输出 `dist/can-pilot/` 和通用 tar.gz，入口为 `can-pilot`。
 
 ### macOS / Linux（只支持 X-Plane）
 
@@ -40,9 +42,8 @@ macOS / Linux 同样是自包含单文件发布。macOS 默认输出通用的 `d
 - **PTT**：键盘、鼠标侧键、摇杆都支持，绑定仍按 Windows 虚拟键码存，配置跨平台通用。
   - macOS：键盘 / 鼠标侧键用 CoreGraphics 读取，需要在“系统设置 → 隐私与安全性 → 输入监控”允许 CAN Pilot（首次使用时会请求，授权后重启客户端）；摇杆走 IOKit HID，无需额外权限。
   - Linux：直接读 evdev（`/dev/input/event*`），X11 和 Wayland 下都全局有效。键盘和鼠标节点一般只有 `input` 组可读，需执行 `sudo usermod -aG input $USER` 后重新登录；读不到时日志里会提示。
-- **文件位置**：Linux 与 Windows 一样，设置和 `logs/` 放在程序目录；程序目录不可写时（如 Arch 包装在 `/opt/can-pilot`）两者都放 `$XDG_DATA_HOME/CAN Pilot Client`（默认 `~/.local/share/CAN Pilot Client`）。macOS 的 `.app` 包里不写文件，设置和日志在 `~/Library/Application Support/CAN Pilot Client`。
-- **Linux 安装**：以 Arch 为主。Release 附 `can-pilot-bin-*.pkg.tar.zst`（`sudo pacman -U` 安装到 `/opt/can-pilot`，带菜单项和 `can-pilot` 命令）和填好版本的 `PKGBUILD`（`packaging/arch/PKGBUILD`，可用于 AUR）。其他 glibc 发行版解压 `linux-x64.tar.gz` 直接运行 `can-pilot/can-pilot`，`desktop/` 里的菜单文件和图标可拷到 `~/.local/share/applications`、`~/.local/share/icons/hicolor/64x64/apps`。运行依赖：ICU、fontconfig、X11 基础库（Wayland 下经 XWayland）、一种中文字体：
-  - Arch：`sudo pacman -S icu fontconfig libx11 libice libsm libxi libxcursor libxrandr noto-fonts-cjk`（装 pacman 包时自动处理，中文字体是可选依赖）
+- **文件位置**：Linux 与 Windows 一样，设置和 `logs/` 放在程序目录；程序目录不可写时两者都放 `$XDG_DATA_HOME/CAN Pilot Client`（默认 `~/.local/share/CAN Pilot Client`）。macOS 的 `.app` 包里不写文件，设置和日志在 `~/Library/Application Support/CAN Pilot Client`。
+- **Linux 安装**：Release 提供通用的 `linux-x64.tar.gz`，适用于 glibc 发行版，解压后直接运行 `can-pilot/can-pilot`。`desktop/` 里的菜单文件和图标可拷到 `~/.local/share/applications`、`~/.local/share/icons/hicolor/64x64/apps`。运行依赖：ICU、fontconfig、X11 基础库（Wayland 下经 XWayland）、一种中文字体：
   - Debian / Ubuntu：`sudo apt install libicu-dev fontconfig libx11-6 libice6 libsm6 libxi6 libxcursor1 libxrandr2 fonts-noto-cjk`
   - Fedora：`sudo dnf install libicu fontconfig libX11 libICE libSM libXi libXcursor libXrandr google-noto-sans-cjk-fonts`
   - 不支持 musl 发行版（如 Alpine）。
@@ -52,7 +53,7 @@ macOS / Linux 同样是自包含单文件发布。macOS 默认输出通用的 `d
 ### 自动发布
 
 `.github/workflows/release.yml` 在推到默认分支时在 Windows / macOS / Linux 上跑测试、编译各平台 RNNoise、
-发布 `can-pilot-v3.0.x-win-x64.zip`、`-osx-universal.zip`、`-linux-x64.tar.gz` 和 Arch 的 `can-pilot-bin-*.pkg.tar.zst`、`PKGBUILD`，再打标签并建 GitHub Release（附 `SHA256SUMS`）。macOS / Linux 包发布前会在 CI 里真的启动一次（Linux 用 Xvfb，macOS 分别跑原生 arm64 和 Rosetta 下的 x64），30 秒内退出就不发。PR 也跑同样的测试、打包和启动检查，只是不发版。
+发布 `can-pilot-v3.0.x-win-x64.zip`、`-osx-arm64.zip`、`-linux-x64.tar.gz`，再打标签并建 GitHub Release（附 `SHA256SUMS`）。macOS / Linux 包发布前会在 CI 里真的启动一次（Linux 用 Xvfb，macOS 跑原生 ARM64），30 秒内退出就不发。PR 也跑同样的测试、打包和启动检查，只是不发版。
 补丁号由已有的 `v3.0.*` 标签加一得出，第一次是 `v3.0.0`；想换到 3.1 就把
 `Directory.Build.props` 和工作流里的 `SERIES` 一起改。手动触发或推到其他分支只在
 Actions 里留产物，不发版、不占版本号。
@@ -82,7 +83,7 @@ X-Plane 插件包 `native/XPC_for_CAN-plugin.zip` 已提交在仓库里，CI 直
 
 ## 首次连接
 
-1. 启动 MSFS 或 X-Plane 进入飞行，再启动客户端。
+1. 启动 MSFS、P3D、FSX 或 X-Plane 进入飞行，再启动客户端。
 2. 设置 → 网络：填写 CID、密码，选择 FSD 和语音服务器；音频、按键通话 (PTT) 按需设置。
 3. 点击“连接”，填写呼号和机型代码。观察员模式只连语音，可以不开模拟器（用 `.com1 121.800` 设频率）。
 4. 在模拟器里调 COM1，语音会跟着切频道；按住 PTT 发话。
@@ -98,6 +99,17 @@ X-Plane 插件包 `native/XPC_for_CAN-plugin.zip` 已提交在仓库里，CI 直
 - 管制员 ↔ 管制员：不限距离（自己的 CID 正以管制席位在线时按管制员算）
 
 自己的位置取模拟器实时坐标，没有模拟器时到 data.json 里按 CID 找；找不到自己、或 data.json 超过 1 分钟拉不到时，全部放行。可在“设置 → 音频”关闭。
+
+## P3D / FSX 接入
+
+照 vPilot 的做法实现：FSX、FSX:SE、P3D v1–v6 都通过 **FSX Acceleration 的 SimConnect 客户端**（10.0.61637）接入，P3D 各版本都接受这个老客户端。它只有 32 位，x64 的客户端进程加载不了，所以由随包的 32 位小程序 `fsx/can-simconnect.exe`（`src/CanClient.SimBridge`，NativeAOT，无需安装 .NET）加载 `fsx/SimConnect.dll`，客户端经标准输入输出转发 SimConnect 调用；本机数据、调频、应答机、他机注入和模型匹配走的仍是同一套代码。
+
+- **接入方式**：“设置 → 模拟器”选 `Auto` 或 `FSX/P3D`。只有 `FSX.exe` / `Prepar3D.exe` 在运行时才启动桥接；P3D / FSX 在跑而 MSFS 没在跑时，MSFS 那条连接暂停探测（两者的 SimConnect 管道同名）。
+- **版本识别**：按 SimConnect 回报的程序版本区分（10 = FSX，构建号 62000 以上为 Steam 版；1–6 = P3D 各大版本），和 vPilot 一致。FSD 上报 FSX = 9、P3D = 30。
+- **差异**（同 vPilot）：不读应答机状态 / IDENT（老模拟器没有，应答机按 Mode C 处理）；调频用 BCD 的 `COM_RADIO_SET`，按 25 kHz 间隔；FSX / P3D 没有内置默认机规则，只用扫描到的模型和自定义 `.vmr`，默认模型 FSX 为 `Airbus A321`、P3D 为 `Bombardier CRJ 700`。
+- **模型扫描**：安装目录从注册表（HKCU / HKLM 的 `AppPath` / `SetupPath` / `install_path`）读取；SimObjects 路径读 P3D v2+ 的 `simobjects.cfg`（`[Entry.N] Path=`）或 `fsx.cfg` / `Prepar3D.cfg` 的 `[Main] SimObjectPaths.N`，P3D v3+ 再加上 `add-ons.cfg` 登记的附加包和 `Documents\Prepar3D vN Add-ons` 里 `add-on.xml` 的 SimObjects 组件；Rotorcraft、GroundVehicles 等非飞机类别跳过。便携安装可在对应页面手动指定安装目录。
+- **运行依赖**：FSX 的 SimConnect.dll 依赖 Visual C++ 2005 x86 运行库，FSX / P3D 安装时都会装好。缺少桥接程序时日志会提示，P3D / FSX 无法接入，MSFS / X-Plane 不受影响。
+- 本地构建时 `src/CanClient` 会自动用 NativeAOT 发布桥接到输出目录的 `fsx/`（需要 VS 的 C++ 工具，和 RNNoise 一样；失败只告警）；`-p:SkipSimConnectBridge=true` 可跳过。实际联机流程按 vPilot 的协议实现，尚未在真实 P3D / FSX 上做过联飞验证。
 
 ## 麦克风与语音会话生命周期
 
@@ -148,7 +160,7 @@ dotnet run --project tests/CanClient.VoiceLifetimeSmoke -- "$probe" "$rnnoise"
 
 ## X-Plane 接入
 
-1. 打开“设置 → 模拟器”，接入模式选 `Auto`（自动检测）或 `XPlane`，MSFS 用户可选 `MSFS`；X-Plane 目录和插件配置在相邻的“X-Plane”页。
+1. 打开“设置 → 模拟器”，接入模式选 `Auto`（自动检测）或 `XPlane`，MSFS 用户可选 `MSFS`，P3D / FSX 用户可选 `FSX/P3D`；X-Plane 目录和插件配置在相邻的“X-Plane”页。
 2. 填写 X-Plane 根目录，或点击“自动查找”；点击“安装 / 更新交通插件”，再重启 X-Plane。
 3. 配置 CSL 模型库目录，可复用 X-CSL、xPilot、LiveTraffic 或 IVAO 已安装的 CSL；“扫描 CSL 模型”用于核对数量。点“应用”保存。
 4. 同一个客户端完成登录、双电台收发、文字、飞行计划、IDENT 和应答机操作。X-Plane 侧不再运行 Python 客户端或 voice worker。
@@ -175,11 +187,11 @@ python tools/package-xplane-plugin.py --add-only --mac-xpl 路径/mac.xpl --lin-
 
 ## 模拟器设置显示与版本区分
 
-- 设置侧栏将 **MSFS 2020、MSFS 2024、X-Plane** 挨在一起排列。MSFS 两个版本分别切换各自的包目录、扫描结果和模型规则。
-- 默认只显示检测到已安装的模拟器。MSFS 根据 `UserCfg.opt` 和所配置的包目录检测；X-Plane 根据安装记录、手动指定目录或正在运行的连接检测。
+- 设置侧栏将 **MSFS 2020、MSFS 2024、FSX、FSX:SE、P3D v1–v6、X-Plane** 挨在一起排列。MSFS、FSX、P3D 每个版本分别切换各自的包目录 / 安装目录、扫描结果和模型规则；“模型高级规则”“模型自定义规则”作用于最近打开的那个版本。
+- 默认只显示检测到已安装的模拟器，“模拟器接入”下拉框也只列出装了的类别（当前选着的除外）。MSFS 根据 `UserCfg.opt` 和所配置的包目录检测；FSX / P3D 根据注册表登记的安装目录里有没有 `FSX.exe` / `Prepar3D.exe` 检测（卸载残留的注册表和配置不算），手动指定过安装目录的也算；X-Plane 根据安装记录、手动指定目录或正在运行的连接检测。
 - 安装检测用于控制设置侧栏显示：MSFS 启动时检测并缓存结果，未检测到对应版本就隐藏该版本页面；不据此停止模拟器连接等待或掉线重连。未安装 MSFS 2020 时只隐藏 2020，不影响 2024 或 X-Plane。安装或迁移后重启客户端重新检测；也可开启“显示所有模拟器”手动配置。
-- 便携版、迁移安装没有被识别时：打开 **设置 → 模拟器 → 显示所有模拟器（包括未检测到安装的）**，即可强制显示三种模拟器，再进入对应页面指定目录。点“应用”保存此选项。
-- 选择 MSFS 2020/2024 配置页是编辑对应版本的模型设置，不会切换正在联飞的模拟器连接。页面切换前会保存当前未应用的设置，避免将目录和规则写入另一版本。
+- 便携版、迁移安装没有被识别时：打开 **设置 → 模拟器 → 显示所有模拟器（包括未检测到安装的）**，即可强制显示所有模拟器类别，再进入对应页面指定目录。点“应用”保存此选项。
+- 选择 MSFS / FSX / P3D 某个版本的配置页是编辑对应版本的模型设置，不会切换正在联飞的模拟器连接。页面切换前会保存当前未应用的设置，避免将目录和规则写入另一版本。
 
 ## 多 PTT 设置与低配置电脑
 
@@ -220,7 +232,8 @@ python tools/package-xplane-plugin.py --add-only --mac-xpl 路径/mac.xpl --lin-
 |---|---|
 | `src/CanClient.Core/` | 业务逻辑：FSD（`Fsd/`）、Mumble 语音（`Voice/`）、SimConnect 与他机注入（`Sim/`）、运动模型（`Traffic/`）、模型匹配（`ModelMatching/`）、PTT、设置 |
 | `src/CanClient/` | Avalonia 界面（主题令牌在 `Styles/Theme/Tokens.axaml`） |
+| `src/CanClient.SimBridge/` | P3D / FSX 的 32 位 SimConnect 桥接进程（NativeAOT，发布到 `fsx/`） |
 | `tests/CanClient.Tests/` | 单元测试（协议、加密、高度、模型扫描与匹配；有 MSFS 时另扫一遍真实安装） |
 | `tests/CanClient.UiTests/` | 无头渲染各窗口和设置页，截图在 `bin/.../screens` |
-| `native/` | Windows 的 `SimConnect.dll`、`opus.dll`，以及 RNNoise 构建脚本（`build.ps1` / `build.sh`） |
+| `native/` | Windows 的 `SimConnect.dll`（MSFS SDK，x64）、`fsx/SimConnect.dll`（FSX Acceleration SDK 的可再发行客户端，x86，和 vPilot 随包的同一份）、`opus.dll`，以及 RNNoise 构建脚本（`build.ps1` / `build.sh`） |
 | `data/ModelMatchingData.bin` | vPilot 的模型匹配数据 |

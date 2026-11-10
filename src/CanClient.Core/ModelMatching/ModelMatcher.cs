@@ -103,14 +103,16 @@ public sealed class ModelMatcher
     public void SetData(ModelMatchingData data) => Data = data;
 
     /// <summary>模拟器拒绝生成这个模型（SIMCONNECT_EXCEPTION_CREATE_OBJECT_FAILED）。</summary>
-    public void MarkErroneous(string model)
+    /// <returns>是不是第一次拉黑这个模型。</returns>
+    public bool MarkErroneous(string model)
     {
         lock (_sync)
         {
             if (!_erroneous.Add(model))
-                return;
+                return false;
         }
         Log.Warning($"model {model} could not be created by the simulator and will not be used again");
+        return true;
     }
 
     public void ClearErroneous(IEnumerable<string>? keep = null)
@@ -245,7 +247,13 @@ public sealed class ModelMatcher
             });
         }
 
-        var builtIn = Simulator == SimulatorType.Msfs2024 ? BuiltInRules.Msfs2024 : BuiltInRules.Msfs2020;
+        // FSX / P3D 没有内置规则（vPilot 也一样），全靠扫描出来的模型
+        var builtIn = Simulator switch
+        {
+            SimulatorType.Msfs2024 => BuiltInRules.Msfs2024,
+            _ when Simulator.IsLegacy() => [],
+            _ => BuiltInRules.Msfs2020
+        };
         foreach (var (typeCode, modelName) in builtIn)
         {
             generated.Add(new ModelMatchRule

@@ -20,7 +20,7 @@ public sealed record AircraftConfigFile(string VirtualPath, string FullPath, str
 ///
 /// 这样扫出来的就是模拟器真正能生成的那些，附加件、地景里的配置一个都不会混进来。
 /// </summary>
-public sealed class MsfsInstallation
+public sealed class MsfsInstallation : ISimulatorInstallation
 {
     private static readonly Lazy<IReadOnlyList<SimulatorType>> DetectedInstallations = new(() =>
         new[] { SimulatorType.Msfs2024, SimulatorType.Msfs }

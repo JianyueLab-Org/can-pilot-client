@@ -23,10 +23,13 @@ public partial class SettingsWindow : Window
         if (Menu.SelectedItem is not ListBoxItem { Tag: string tag })
             return;
 
-        if (tag is "Msfs2020" or "Msfs2024" && DataContext is SettingsViewModel vm)
+        // MSFS / FSX / P3D 各版本共用一个模型匹配页面，切换时换成那个模拟器的扫描结果和设置
+        var simulator = SettingsViewModel.SimulatorForTag(tag);
+        if (simulator != SimulatorType.None && DataContext is SettingsViewModel vm)
         {
-            await vm.SelectMsfsSettingsAsync(tag == "Msfs2020" ? SimulatorType.Msfs : SimulatorType.Msfs2024);
+            await vm.SelectModelSettingsAsync(simulator);
             if (Menu.SelectedItem is not ListBoxItem { Tag: string current } || current != tag) return;
+            tag = "ModelMatching";
         }
 
         if (!_panels.TryGetValue(tag, out var panel))
@@ -46,7 +49,6 @@ public partial class SettingsWindow : Window
         "Audio" => new AudioPage(),
         "Ptt" => new PttPage(),
         "ModelMatching" => new ModelMatchingPage(),
-        "Msfs2020" or "Msfs2024" => new ModelMatchingPage(),
         "SimulatorGeneral" => new SimulatorGeneralPage(),
         "ModelMatchingAdvanced" => new ModelMatchingAdvancedPage(),
         "CustomRules" => new CustomRulesPage(),

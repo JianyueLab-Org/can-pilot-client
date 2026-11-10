@@ -43,6 +43,18 @@
     <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
   </Style>
 
+  <Style Selector="PathIcon">
+    <Setter Property="Width" Value="9" />
+    <Setter Property="Height" Value="9" />
+  </Style>
+  <Style Selector="PathIcon.small">
+    <Setter Property="Width" Value="7" />
+    <Setter Property="Height" Value="7" />
+  </Style>
+  <Style Selector="PathIcon.close"><Setter Property="Data" Value="{DynamicResource Icon.Close}" /></Style>
+  <Style Selector="PathIcon.minimize"><Setter Property="Data" Value="{DynamicResource Icon.Minimize}" /></Style>
+  <Style Selector="PathIcon.check"><Setter Property="Data" Value="{DynamicResource Icon.Check}" /></Style>
+
   <!-- 分隔线 -->
   <Style Selector="Rectangle.vsep">
     <Setter Property="Width" Value="1" />

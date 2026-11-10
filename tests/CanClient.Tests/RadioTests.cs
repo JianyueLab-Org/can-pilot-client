@@ -64,6 +64,32 @@ public class RadioTests
     }
 
     [Fact]
+    public void LegacySimVarsCannotDisableVoiceReception()
+    {
+        var state = SimConnection.BuildState(new Dictionary<string, double>
+        {
+            ["com1"] = 121.8, ["com2"] = 125.4,
+            ["com1rx"] = 0, ["com2rx"] = 0
+        }, "P3D", legacy: true);
+
+        Assert.True(state.Com1Receiving);
+        Assert.True(state.Com2Receiving);
+    }
+
+    [Fact]
+    public void ModernSimVarsStillControlVoiceReception()
+    {
+        var state = SimConnection.BuildState(new Dictionary<string, double>
+        {
+            ["com1"] = 121.8, ["com2"] = 125.4,
+            ["com1rx"] = 0, ["com2rx"] = 1
+        }, "MSFS");
+
+        Assert.False(state.Com1Receiving);
+        Assert.True(state.Com2Receiving);
+    }
+
+    [Fact]
     public void ServerAcknowledgedListenersSurviveMovesButNotRemovalOrReconnect()
     {
         using var connection = new MumbleConnection("localhost", 64738, "test", "");

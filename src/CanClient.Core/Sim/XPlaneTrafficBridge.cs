@@ -24,11 +24,19 @@ public sealed class XPlaneTrafficBridge : IDisposable
         })).ToArray();
     }
 
+    /// <summary>JSON 写不了 NaN / Infinity：一架坏数据的飞机会让整帧序列化失败，所以先把它单独剔掉。</summary>
+    internal static bool Renderable(TrafficEntry e) =>
+        double.IsFinite(e.Latitude) && double.IsFinite(e.Longitude) && double.IsFinite(e.Altitude) &&
+        double.IsFinite(e.Pitch) && double.IsFinite(e.Bank) && double.IsFinite(e.Heading) &&
+        double.IsFinite(e.Flaps) && double.IsFinite(e.NoseWheel) && (e.Agl is not { } agl || double.IsFinite(agl));
+
     internal static object Frame(IEnumerable<TrafficEntry> entries, OwnAircraftState? own, string csl) => new
     {
         type = "traffic", csl,
-        own = own is null ? null : new { latitude = own.Latitude, longitude = own.Longitude, altitude = own.Altitude },
-        aircraft = entries.Take(63).Select(e => new
+        own = own is null || !double.IsFinite(own.Latitude) || !double.IsFinite(own.Longitude)
+            ? null
+            : new { latitude = own.Latitude, longitude = own.Longitude, altitude = own.Altitude },
+        aircraft = entries.Where(Renderable).Take(63).Select(e => new
         {
             callsign = e.Callsign, equipment = e.Equipment, airline = e.Airline, livery = e.Livery,
             // 留空交给原生插件按机型/航司/涂装完整匹配，不能传 MSFS 模型名。

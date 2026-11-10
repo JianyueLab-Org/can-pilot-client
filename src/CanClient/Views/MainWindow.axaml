@@ -54,7 +54,8 @@
                   <MenuItem Header="清空当前消息" Click="OnClearMessagesClick" />
                   <Separator />
                   <MenuItem Header="检查更新" Click="OnCheckUpdateClick" />
-                  <MenuItem Header="打开日志位置" Click="OnOpenLogClick" />
+                   <MenuItem Header="打开日志位置" Click="OnOpenLogClick" />
+                   <MenuItem Header="隐私与本地数据" Click="OnPrivacyClick" />
                   <MenuItem Header="关于" Click="OnAboutClick" />
                 </MenuFlyout>
               </Button.Flyout>
@@ -76,8 +77,8 @@
 
           <!-- 最小化 / 退出（对应 vPilot BtnMinimize / BtnExit） -->
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Top">
-            <Button Classes="ghost icon" Content="—" FontSize="10" ToolTip.Tip="最小化" Click="OnMinimizeClick" />
-            <Button Classes="ghost icon danger" Content="✕" ToolTip.Tip="退出" Click="OnExitClick" />
+            <Button Classes="ghost icon" ToolTip.Tip="最小化" Click="OnMinimizeClick"><PathIcon Classes="minimize" /></Button>
+            <Button Classes="ghost icon danger" ToolTip.Tip="退出" Click="OnExitClick"><PathIcon Classes="close" /></Button>
           </StackPanel>
         </Grid>
       </Border>
@@ -134,9 +135,8 @@
                 <Button Classes="ghost"
                         Width="16" Height="16" MinHeight="0" Padding="0"
                         FontSize="9"
-                        Content="✕"
                         IsVisible="{Binding IsClosable}"
-                        Click="OnCloseTabClick" />
+                        Click="OnCloseTabClick"><PathIcon Classes="close small" /></Button>
               </StackPanel>
             </DataTemplate>
           </TabControl.ItemTemplate>

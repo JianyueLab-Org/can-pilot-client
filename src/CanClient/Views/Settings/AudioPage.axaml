@@ -42,5 +42,18 @@
     </Grid>
     <TextBlock Classes="caption" Margin="72,8,0,0" TextWrapping="Wrap"
                Text="调整麦克风音量，使正常说话时电平保持在中段区间内。" />
+
+    <!-- 麦克风音量自动校准：先静音 1 秒测底噪，再朗读 8 秒，算出的增益直接填进上面的滑块 -->
+    <StackPanel Margin="72,10,0,0" Spacing="6">
+      <Button Content="{Binding CalibrateButtonText}" Command="{Binding CalibrateCommand}" HorizontalAlignment="Left" />
+      <Border IsVisible="{Binding IsCalibrating}" Padding="8,6" CornerRadius="2"
+              Background="{DynamicResource Brush.Bg.Control}" BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+        <TextBlock Text="{Binding CalibrationPhrase}" TextWrapping="Wrap" />
+      </Border>
+      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding CalibrationStatus}"
+                 IsVisible="{Binding !CalibrationFailed}" />
+      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding CalibrationStatus}"
+                 IsVisible="{Binding CalibrationFailed}" Foreground="{DynamicResource Brush.Danger}" />
+    </StackPanel>
   </StackPanel>
 </UserControl>

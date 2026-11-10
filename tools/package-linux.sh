@@ -2,8 +2,7 @@
 # 把 Linux 的自包含单文件发布目录打成 tar.gz：解压出来是 can-pilot/ 目录，入口 can-pilot/can-pilot。
 #   tools/package-linux.sh <发布目录> <输出的 .tar.gz>
 #
-# 目录里另带 desktop/can-pilot.desktop 和图标：Arch 包（packaging/arch/PKGBUILD）装到系统菜单，
-# 其他发行版的用户也可以照 README 自己拷过去。
+# 目录里另带 desktop/can-pilot.desktop 和图标，用户可以照 README 拷到应用菜单目录。
 set -euo pipefail
 
 publish=$1

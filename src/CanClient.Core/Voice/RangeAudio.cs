@@ -323,7 +323,7 @@ public sealed class RangeAudioService : IDisposable
         if (old.Count == policy.Count && policy.All(p => old.TryGetValue(p.Key, out var v) && v == p.Value))
             return;
         var muted = policy.Where(p => !p.Value).Select(p => p.Key).OrderBy(c => c, StringComparer.Ordinal).ToList();
-        Log.Debug($"range policy: {policy.Count} entries, muted [{string.Join(", ", muted)}]");
+        Log.Debug($"range policy: {policy.Count} entries, {muted.Count} muted");
     }
 
     public void Dispose()

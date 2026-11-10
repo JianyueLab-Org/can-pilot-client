@@ -15,7 +15,7 @@
         <TextBox Text="{Binding NetworkPassword}" PasswordChar="●" />
       </StackPanel>
     </Grid>
-    <CheckBox Margin="0,6,0,0" Content="记住密码（保存在程序目录的配置文件里）" IsChecked="{Binding RememberPassword}" />
+    <CheckBox Margin="0,6,0,0" Content="记住密码（系统凭据库；不可用时不保存）" IsChecked="{Binding RememberPassword}" />
     <TextBlock Classes="label" Text="您的全名" />
     <TextBox Text="{Binding FullName}" Width="200" HorizontalAlignment="Left" />
 

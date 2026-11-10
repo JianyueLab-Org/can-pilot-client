@@ -24,7 +24,7 @@ public sealed class ModelMatchingSettings
 /// <summary>
 /// 配置，存成程序目录下的 msfs_settings.json，键名和 Python 版一致，老配置直接读得进来。
 ///
-/// **密码默认不落盘。** 这里的密码就是成员的网站密码（can-api 的 VerifyNetworkCredential 两个列都认），
+    /// **密码默认不落盘，主动记住时仅保存到操作系统凭据库。** 这里的密码就是成员的网站密码（can-api 的 VerifyNetworkCredential 两个列都认），
 /// 这个文件泄露一次，泄露的是整个账号。所以 remember_password 默认关，<see cref="Save"/> 只在它为
 /// true 时写密码。老配置里已经有明文密码（没有 remember_password 这个键）的，读进内存照常能连，然后
 /// 立刻把文件重写掉并置上 <see cref="PasswordMigrated"/> 让界面说一声。
@@ -79,6 +79,8 @@ public sealed class AppSettings
     [JsonPropertyName("show_all_simulators")] public bool ShowAllSimulators { get; set; }
     [JsonPropertyName("msfs2020_packages_path")] public string Msfs2020PackagesPath { get; set; } = "";
     [JsonPropertyName("msfs2024_packages_path")] public string Msfs2024PackagesPath { get; set; } = "";
+    /// <summary>手动指定的 FSX / P3D 安装目录（模拟器名 → 目录），留空就读注册表。</summary>
+    [JsonPropertyName("simulator_paths")] public Dictionary<string, string> SimulatorPaths { get; set; } = new();
     [JsonPropertyName("xplane_path")] public string XPlanePath { get; set; } = "";
     [JsonPropertyName("csl_path")] public string CslPath { get; set; } = "";
     [JsonPropertyName("xplane_host")] public string XPlaneHost { get; set; } = "";
@@ -157,6 +159,28 @@ public sealed class AppSettings
         return settings;
     }
 
+    /// <summary>设置里给这个模拟器手动指定的模型目录：MSFS 是包目录，FSX / P3D 是安装目录。没指定返回空串。</summary>
+    public string SimulatorPathFor(SimulatorType simulator) => simulator switch
+    {
+        SimulatorType.Msfs => Msfs2020PackagesPath,
+        SimulatorType.Msfs2024 => Msfs2024PackagesPath,
+        _ => SimulatorPaths.GetValueOrDefault(simulator.ToString(), "")
+    };
+
+    public void SetSimulatorPath(SimulatorType simulator, string path)
+    {
+        path = (path ?? "").Trim();
+        switch (simulator)
+        {
+            case SimulatorType.Msfs: Msfs2020PackagesPath = path; break;
+            case SimulatorType.Msfs2024: Msfs2024PackagesPath = path; break;
+            default:
+                if (path.Length == 0) SimulatorPaths.Remove(simulator.ToString());
+                else SimulatorPaths[simulator.ToString()] = path;
+                break;
+        }
+    }
+
     public static AppSettings Load(string? path = null)
     {
         path ??= AppPaths.SettingsFile;
@@ -185,7 +209,19 @@ public sealed class AppSettings
             settings = new AppSettings();
 
         settings.Path = path;
+        Privacy.Protect(settings.Cid, settings.Password, settings.RealName, settings.Callsign);
         settings.Migrate(raw);
+        if (settings.RememberPassword)
+        {
+            try
+            {
+                var stored = CredentialStore.Read();
+                if (stored is null) settings.RememberPassword = false;
+                else settings.Password = stored;
+            }
+            catch { settings.RememberPassword = false; Log.Warning("系统凭据库不可用，请在连接前重新输入密码。"); }
+        }
+        Privacy.Protect(settings.Cid, settings.Password, settings.RealName, settings.Callsign);
         return settings;
     }
 
@@ -246,7 +282,7 @@ public sealed class AppSettings
         LegacyJoystickPtt = null;
 
         // 老版本存下来的明文密码：本次还能用，但从文件里清掉
-        if (raw is not null && raw["remember_password"] is null && !string.IsNullOrWhiteSpace(Password))
+        if (raw is not null && !string.IsNullOrWhiteSpace(Password))
         {
             RememberPassword = false;
             PasswordMigrated = true;
@@ -256,35 +292,49 @@ public sealed class AppSettings
         }
     }
 
-    /// <summary>某个输入设备在 Python 版里校准出来的基准增益，没有返回 null。</summary>
-    public double? CalibratedGainFor(string device)
+    /// <summary>
+    /// 某个输入设备在当前降噪状态下校准出来的增益，没有返回 null。记录是在另一种降噪状态下做的也算没有
+    /// （降噪会改变测得的电平）；缺 denoise 键的老记录视为不降噪时做的。设备名空串表示系统默认设备。
+    /// </summary>
+    public double? CalibratedGainFor(string device, bool denoise)
     {
-        if (string.IsNullOrEmpty(device) || MicCalibration[device] is not JsonObject entry)
+        if (MicCalibration[device ?? ""] is not JsonObject entry)
+            return null;
+        var entryDenoise = entry["denoise"] is JsonValue d && d.TryGetValue(out bool b) && b;
+        if (entryDenoise != denoise)
             return null;
         if (entry["gain_db"] is JsonValue value && value.TryGetValue(out double gain) && !double.IsNaN(gain))
-            return Math.Clamp(gain, -12, 20);
+            return Math.Clamp(gain, Voice.MicCalibration.MinGainDb, Voice.MicCalibration.MaxGainDb);
         return null;
     }
 
-    public void Save()
+    public void Save(bool throwOnError = false)
     {
+        Privacy.Protect(Cid, Password, RealName, Callsign);
         try
         {
             var node = JsonSerializer.SerializeToNode(this, JsonOptions)!.AsObject();
-            // 没勾"记住密码"就不写。写空串而不是把键删掉，迁移判据只认 remember_password。
-            if (!RememberPassword)
-                node["password"] = "";
+            node["password"] = "";
+            try { CredentialStore.Save(RememberPassword ? Password : null); }
+            catch
+            {
+                RememberPassword = false;
+                node["remember_password"] = false;
+                Log.Warning("系统凭据库不可用，密码仅保留在当前会话，未保存到配置文件。");
+            }
             foreach (var legacy in new[] { "speaker_volume", "package_roots", "ptt_key", "joystick_ptt", "mic_volume" })
                 node.Remove(legacy);
             var directory = System.IO.Path.GetDirectoryName(Path);
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
             var temp = Path + ".tmp";
-            File.WriteAllText(temp, node.ToJsonString(JsonOptions));
+            PrivateFiles.Write(temp, node.ToJsonString(JsonOptions));
             File.Move(temp, Path, overwrite: true);
+            PrivateFiles.Restrict(Path);
         }
         catch (Exception e)
         {
+            if (throwOnError) throw;
             Log.Warning($"could not save the settings: {e.Message}");
         }
     }

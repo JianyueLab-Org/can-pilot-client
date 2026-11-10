@@ -1,14 +1,32 @@
 using System.Collections.ObjectModel;
 using CanClient.Core.Fsd;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace CanClient.ViewModels;
 
 /// <summary>“范围内管制员”树中的一个分组（区域、进近、塔台……）。</summary>
-public sealed class ControllerGroup(string name)
+public sealed class ControllerGroup : ObservableObject
 {
-    public string Name { get; } = name;
+    public ControllerGroup(string name)
+    {
+        Name = name;
+        // 人数变了只刷新标题；别重建分组集合，那样树会把展开的分组收起来
+        Stations.CollectionChanged += (_, _) => OnPropertyChanged(nameof(Header));
+    }
+
+    public string Name { get; }
     public ObservableCollection<ControllerStation> Stations { get; } = [];
     public string Header => Stations.Count > 0 ? $"{Name}（{Stations.Count}）" : Name;
+
+    /// <summary>换成新的席位列表；没变就不动，免得树里的选中和滚动位置跟着跳。</summary>
+    public void SetStations(IReadOnlyList<ControllerStation> stations)
+    {
+        if (Stations.SequenceEqual(stations))
+            return;
+        Stations.Clear();
+        foreach (var station in stations)
+            Stations.Add(station);
+    }
 
     public static readonly string[] Names = ["区域", "进近/离场", "塔台", "地面", "机坪", "放行", "ATIS", "观察员"];
 
@@ -44,10 +62,7 @@ public sealed class ControllerGroup(string name)
     }
 }
 
-public sealed class ControllerStation(string callsign, string frequency, string realName)
+public sealed record ControllerStation(string Callsign, string Frequency, string RealName)
 {
-    public string Callsign { get; } = callsign;
-    public string Frequency { get; } = frequency;
-    public string RealName { get; } = realName;
     public string Tip => RealName.Length > 0 ? $"{Callsign} · {RealName}" : Callsign;
 }

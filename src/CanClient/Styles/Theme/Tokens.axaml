@@ -116,6 +116,11 @@
 
   <Thickness x:Key="Border.Thin">1</Thickness>
 
+  <!-- 同步 can-client-ui：窗口图标不依赖系统字体。 -->
+  <StreamGeometry x:Key="Icon.Close">M0.7,0 L5,4.3 L9.3,0 L10,0.7 L5.7,5 L10,9.3 L9.3,10 L5,5.7 L0.7,10 L0,9.3 L4.3,5 L0,0.7 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Minimize">M0,4.5 L10,4.5 L10,5.5 L0,5.5 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Check">M0,5.2 L0.7,4.5 L3.6,7.4 L9.3,1.7 L10,2.4 L3.6,8.8 Z</StreamGeometry>
+
   <!-- ========== 映射到 Avalonia Simple 主题的资源键 ========== -->
   <StaticResource x:Key="ContentControlThemeFontFamily" ResourceKey="Font.UI" />
   <StaticResource x:Key="FontSizeSmall" ResourceKey="FontSize.Small" />
