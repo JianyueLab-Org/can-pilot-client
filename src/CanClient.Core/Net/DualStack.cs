@@ -117,20 +117,24 @@ public static class DualStack
             token.ThrowIfCancellationRequested();
             var address = plan.Addresses[i];
             var family = address.AddressFamily;
-            var remaining = totalTimeout - clock.Elapsed;
-            if (remaining <= TimeSpan.Zero)
-                break;
-            // 后面还有一种地址族一次都没试过：给它留出一整次尝试的时间。否则首选的那种有好几个
-            // 黑洞地址时，会把总时限用光，回退的那种根本轮不到。
-            var otherPending = plan.Addresses.Skip(i + 1).Any(a => a.AddressFamily != family && !tried.Contains(a.AddressFamily));
-            var budget = otherPending ? remaining - attemptTimeout : remaining;
-            var limit = budget < attemptTimeout ? budget : attemptTimeout;
-            if (limit <= TimeSpan.Zero)
+            // 每种地址族的第一个地址都有一次完整的尝试，不受总时限影响（最多超出一点计时误差）。
+            // 同一族后面的地址才按总时限算，而且要给还没试过的另一族留出一整次尝试的时间：否则首选
+            // 的那种有好几个黑洞地址时，会把总时限用光，回退的那种根本轮不到。
+            TimeSpan limit;
+            if (tried.Add(family))
+                limit = attemptTimeout;
+            else
             {
-                Log.Info($"{host}: skipping {Name(family)} {address} to leave time for the other family");
-                continue;
+                var remaining = totalTimeout - clock.Elapsed;
+                var otherPending = plan.Addresses.Skip(i + 1).Any(a => !tried.Contains(a.AddressFamily));
+                var budget = otherPending ? remaining - attemptTimeout : remaining;
+                limit = budget < attemptTimeout ? budget : attemptTimeout;
+                if (limit <= TimeSpan.Zero)
+                {
+                    Log.Info($"{host}: skipping {Name(family)} {address}, out of time");
+                    continue;
+                }
             }
-            tried.Add(family);
 
             Socket socket;
             try

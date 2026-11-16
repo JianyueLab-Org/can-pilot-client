@@ -83,6 +83,31 @@ public class DualStackTests
         }
     }
 
+    [Theory]
+    [InlineData("4", IpPreference.IPv4)]
+    [InlineData("6", IpPreference.IPv6)]
+    [InlineData("1.5", IpPreference.Auto)]
+    [InlineData("false", IpPreference.Auto)]
+    [InlineData("null", IpPreference.Auto)]
+    [InlineData("{ \"a\": [1, 2] }", IpPreference.Auto)]
+    [InlineData("[\"IPv6\"]", IpPreference.Auto)]
+    public void WrongJsonTypeOnlyResetsThisSetting(string json, IpPreference expected)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"can-ip-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, $$"""{ "cid": "", "ip_preference": {{json}}, "traffic_range_nm": 77 }""");
+            var loaded = AppSettings.Load(path);
+            Assert.Equal(expected, loaded.IpPreference);
+            Assert.Equal(77, loaded.TrafficRangeNm);
+            Assert.Equal(expected.ToString(), loaded.IpPreferenceName);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static readonly IPAddress V6c = IPAddress.Parse("2001:db8::3");
 
     [Fact]

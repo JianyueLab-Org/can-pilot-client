@@ -22,6 +22,32 @@ public sealed class ModelMatchingSettings
 }
 
 /// <summary>
+/// 手改配置时填错类型（数字、布尔、对象……）也不让整份配置读失败：数字按原文转成字符串，
+/// 其它类型当作空串，由使用的地方回到默认值。
+/// </summary>
+internal sealed class LenientStringConverter : JsonConverter<string>
+{
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        switch (reader.TokenType)
+        {
+            case JsonTokenType.String:
+                return reader.GetString() ?? "";
+            case JsonTokenType.Number:
+                return System.Text.Encoding.UTF8.GetString(reader.HasValueSequence
+                    ? System.Buffers.BuffersExtensions.ToArray(reader.ValueSequence)
+                    : reader.ValueSpan);
+            default:
+                reader.Skip();
+                return "";
+        }
+    }
+
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value);
+}
+
+/// <summary>
 /// 配置，存成程序目录下的 msfs_settings.json，键名和 Python 版一致，老配置直接读得进来。
 ///
     /// **密码默认不落盘，主动记住时仅保存到操作系统凭据库。** 这里的密码就是成员的网站密码（can-api 的 VerifyNetworkCredential 两个列都认），
@@ -78,7 +104,8 @@ public sealed class AppSettings
     /// 连 FSD 和语音时优先用的 IP 版本：Auto / IPv4 / IPv6。存字符串而不是枚举：手改出一个认不出的值时
     /// 只这一项回到自动，不会让整份配置反序列化失败、全部回到默认。
     /// </summary>
-    [JsonPropertyName("ip_preference")] public string IpPreferenceName { get; set; } = nameof(Net.IpPreference.Auto);
+    [JsonPropertyName("ip_preference"), JsonConverter(typeof(LenientStringConverter))]
+    public string IpPreferenceName { get; set; } = nameof(Net.IpPreference.Auto);
     [JsonIgnore]
     public Net.IpPreference IpPreference
     {
@@ -256,6 +283,7 @@ public sealed class AppSettings
             MumblePortNumber = MumblePort;
         if (FsdPortNumber is <= 0 or > 65535)
             FsdPortNumber = FsdPort;
+        IpPreferenceName = IpPreference.ToString();
 
         MessageSoundVolume = Math.Clamp(MessageSoundVolume, 0, 200);
         MicGainDb = Math.Clamp(MicGainDb, -60, 18);
