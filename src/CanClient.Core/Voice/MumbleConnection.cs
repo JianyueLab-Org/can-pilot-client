@@ -6,6 +6,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using Google.Protobuf;
+using CanClient.Core.Net;
 using CanClient.Core.Util;
 
 namespace CanClient.Core.Voice;
@@ -82,7 +83,7 @@ public sealed class MumbleConnection : IDisposable
     private readonly ConcurrentDictionary<ulong, long> _pendingUdpPings = new();
     private readonly CancellationTokenSource _cts = new();
 
-    private TcpClient? _tcp;
+    private Socket? _tcp;
     private SslStream? _ssl;
     private UdpClient? _udp;
     private long _lastPingReply;
@@ -91,9 +92,13 @@ public sealed class MumbleConnection : IDisposable
     private long _lastResync;
     private bool _pinFailed;
 
-    public MumbleConnection(string host, int port, string username, string password)
+    private readonly IpPreference _ipPreference;
+
+    public MumbleConnection(string host, int port, string username, string password,
+        IpPreference ipPreference = IpPreference.Auto)
     {
         _host = host;
+        _ipPreference = ipPreference;
         _port = port;
         _username = username;
         _password = password;
@@ -123,6 +128,8 @@ public sealed class MumbleConnection : IDisposable
     /// <summary>收到语音：(发送者会话号, 帧号, Opus 数据, 是否结束)。</summary>
     public event Action<uint, ulong, byte[], bool, uint>? AudioReceived;
     public event Action<bool>? UdpStateChanged;
+    /// <summary>IP 版本回退等提示。</summary>
+    public event Action<string>? Notice;
 
     public IReadOnlyCollection<MumbleChannel> Channels => _channels.Values.ToList();
 
@@ -161,15 +168,17 @@ public sealed class MumbleConnection : IDisposable
 
     private void Open(CancellationToken token)
     {
-        var tcp = new TcpClient { NoDelay = true };
-        var connect = tcp.ConnectAsync(_host, _port, token).AsTask();
-        if (!connect.Wait(TimeSpan.FromSeconds(10), token))
+        Socket tcp;
+        try
         {
-            tcp.Dispose();
+            tcp = DualStack.Connect(_host, _port, _ipPreference, message => Notice?.Invoke(message), token);
+        }
+        catch (TimeoutException)
+        {
             throw new TimeoutException($"连接 {_host}:{_port} 超时");
         }
         _tcp = tcp;
-        var ssl = new SslStream(tcp.GetStream(), false, (_, certificate, _, _) =>
+        var ssl = new SslStream(new NetworkStream(tcp, ownsSocket: false), false, (_, certificate, _, _) =>
         {
             var ok = CertificatePinning.Check(_host, certificate, out _);
             _pinFailed = !ok;
@@ -193,7 +202,7 @@ public sealed class MumbleConnection : IDisposable
 
         try
         {
-            var remote = (IPEndPoint)tcp.Client.RemoteEndPoint!;
+            var remote = (IPEndPoint)tcp.RemoteEndPoint!;
             _udp = new UdpClient(remote.AddressFamily);
             _udp.Connect(remote);
         }
@@ -254,7 +263,7 @@ public sealed class MumbleConnection : IDisposable
         {
             try
             {
-                _tcp?.Client.Shutdown(SocketShutdown.Both);
+                _tcp?.Shutdown(SocketShutdown.Both);
             }
             catch
             {

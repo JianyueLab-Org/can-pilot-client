@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using CanClient.Core.Fsd;
+using CanClient.Core.Net;
 using CanClient.Core.Util;
 
 namespace CanClient.Core.Voice;
@@ -98,11 +99,13 @@ public sealed class VoiceSession : IDisposable
     private long _lastRx;
     private volatile bool _receiving;
     private string _talker = "";
+    private readonly IpPreference _ipPreference;
 
     public VoiceSession(string host, int port, string username, string password, AudioEngine audio,
-        string inputDevice, string outputDevice, VoiceOptions options)
+        string inputDevice, string outputDevice, VoiceOptions options, IpPreference ipPreference = IpPreference.Auto)
     {
         _host = host;
+        _ipPreference = ipPreference;
         _port = port;
         _username = username;
         _password = password;
@@ -118,6 +121,8 @@ public sealed class VoiceSession : IDisposable
     public event Action<int, bool>? RadioReceivingChanged;
     /// <summary>进了某个频率的频道（频率, 频道名）。</summary>
     public event Action<double, string>? ChannelChanged;
+    /// <summary>IP 版本回退等提示。</summary>
+    public event Action<string>? Notice;
     /// <summary>处理后的麦克风峰值（0..1），每帧一次。</summary>
     public event Action<double>? Level;
 
@@ -325,7 +330,8 @@ public sealed class VoiceSession : IDisposable
                 Status(LinkState.Reconnecting, $"语音连接断开，正在重连（{attempts}/{ReconnectLimit}）");
             }
 
-            var connection = new MumbleConnection(_host, _port, _username, _password);
+            var connection = new MumbleConnection(_host, _port, _username, _password, _ipPreference);
+            connection.Notice += message => Notice?.Invoke(message);
             connection.Connected += () =>
             {
                 // 计数只在这里清零：TLS 建好、Authenticate 发出去不代表认证通过

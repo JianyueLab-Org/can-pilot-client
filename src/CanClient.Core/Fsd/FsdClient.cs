@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using CanClient.Core.Net;
 using CanClient.Core.Sim;
 using CanClient.Core.Traffic;
 using CanClient.Core.Util;
@@ -88,6 +89,8 @@ public sealed class FsdClient : IDisposable
     private readonly int _simulator;
     private readonly TrafficTable? _traffic;
     private readonly double _reconnectWindow;
+    private readonly IpPreference _ipPreference;
+    private CancellationTokenSource _stopToken = new();
 
     private readonly object _lock = new();
     private readonly object _sendLock = new();
@@ -119,9 +122,10 @@ public sealed class FsdClient : IDisposable
 
     public FsdClient(string host, int port, string callsign, string cid, string password, string realName,
         int rating, string aircraft, int simulator, TrafficTable? traffic,
-        double reconnectWindow = DefaultReconnectWindow)
+        double reconnectWindow = DefaultReconnectWindow, IpPreference ipPreference = IpPreference.Auto)
     {
         _host = host;
+        _ipPreference = ipPreference;
         _port = port > 0 ? port : DefaultPort;
         Callsign = (callsign ?? "").Trim().ToUpperInvariant();
         _cid = FsdProtocol.Sanitize(cid);
@@ -163,6 +167,8 @@ public sealed class FsdClient : IDisposable
     public event Action<IReadOnlyList<ControllerInfo>>? ControllersChanged;
     /// <summary>某个管制席位回了 ATIS 的一行（sender, line）。</summary>
     public event Action<string, string>? AtisReceived;
+    /// <summary>IP 版本回退之类需要让用户知道、但不改变连接状态的提示。</summary>
+    public event Action<string>? Notice;
 
     // ---------- 对外 ----------
 
@@ -172,6 +178,7 @@ public sealed class FsdClient : IDisposable
             return;
         _running = true;
         _stop.Reset();
+        _stopToken = new CancellationTokenSource();
         _thread = new Thread(Run) { IsBackground = true, Name = "fsd" };
         _thread.Start();
     }
@@ -184,6 +191,8 @@ public sealed class FsdClient : IDisposable
         // 不在这里关 socket：收包循环最多 0.2 秒就会看到停止标记，自己走 Close()，
         // 那里还要发一个 #DP 让服务端立刻放出呼号。
         _stop.Set();
+        try { _stopToken.Cancel(); }
+        catch (ObjectDisposedException) { }
         var thread = _thread;
         if (thread is not null && thread.IsAlive && thread != Thread.CurrentThread)
             thread.Join(TimeSpan.FromSeconds(3));
@@ -438,14 +447,11 @@ public sealed class FsdClient : IDisposable
         Status(LinkState.Connecting, $"正在以 {Callsign} 连接 FSD 服务器 {_host}……");
         try
         {
-            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-            var connect = socket.ConnectAsync(_host, _port);
-            if (!connect.Wait(TimeSpan.FromSeconds(10)))
-            {
-                socket.Dispose();
-                throw new TimeoutException("连接超时");
-            }
-            _socket = socket;
+            _socket = DualStack.Connect(_host, _port, _ipPreference, message => Notice?.Invoke(message), _stopToken.Token);
+        }
+        catch (OperationCanceledException) when (StopRequested)
+        {
+            return false;
         }
         catch (Exception e)
         {
