@@ -218,8 +218,9 @@ public sealed class ClientController : IDisposable
         };
         var fsd = new FsdClient(Settings.FsdHostName, Settings.FsdPortNumber, _callsign, Settings.Cid, Settings.Password,
             string.IsNullOrWhiteSpace(Settings.RealName) ? Settings.Cid : Settings.RealName, Settings.Rating, _typeCode,
-            simulator, Traffic);
+            simulator, Traffic, ipPreference: Settings.IpPreference);
         fsd.StatusChanged += (state, message) => OnFsdStatus(fsd, state, message);
+        fsd.Notice += message => { if (fsd == Fsd) Post(MessageKind.System, $"FSD：{message}"); };
         fsd.TextReceived += OnText;
         fsd.ControllersChanged += list => ControllersChanged?.Invoke(list);
         fsd.AtisReceived += (sender, line) => Post(MessageKind.Radio, line, sender);
@@ -233,8 +234,9 @@ public sealed class ClientController : IDisposable
     private void StartVoice()
     {
         var voice = new VoiceSession(Settings.MumbleHostName, Settings.MumblePortNumber, Settings.Cid, Settings.Password,
-            Audio, Settings.InputDevice, Settings.OutputDevice, VoiceOptions);
+            Audio, Settings.InputDevice, Settings.OutputDevice, VoiceOptions, Settings.IpPreference);
         voice.StatusChanged += (state, message) => OnVoiceStatus(voice, state, message);
+        voice.Notice += message => { if (voice == Voice) Post(MessageKind.System, $"语音：{message}"); };
         voice.TransmittingChanged += value => { if (voice == Voice) TransmittingChanged?.Invoke(value); };
         voice.ReceivingChanged += value => { if (voice == Voice) ReceivingChanged?.Invoke(value); };
         voice.RadioReceivingChanged += (radio, value) => { if (voice == Voice) RadioReceivingChanged?.Invoke(radio, value); };

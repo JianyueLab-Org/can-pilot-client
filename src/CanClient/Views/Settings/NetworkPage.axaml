@@ -32,6 +32,14 @@
       <TextBox Classes="mono" Text="{Binding VoiceHost}" PlaceholderText="地址" />
       <NumericUpDown Grid.Column="1" Minimum="1" Maximum="65535" FormatString="0" Value="{Binding VoicePort}" />
     </Grid>
+    <TextBlock Classes="label" Text="IP 版本" />
+    <ComboBox x:Name="IpPreferenceBox" SelectedIndex="{Binding IpPreferenceIndex}" HorizontalAlignment="Stretch">
+      <ComboBoxItem Content="自动（系统决定，一种连不上就换另一种）" />
+      <ComboBoxItem Content="优先 IPv4" />
+      <ComboBoxItem Content="优先 IPv6" />
+    </ComboBox>
+    <TextBlock Classes="caption" TextWrapping="Wrap" Margin="0,4,0,0"
+               Text="FSD 和语音都按这里的选择连接。服务器没有所选版本的地址、或者连不上时，会自动回退到另一种，并在消息栏和日志里说明。下次连接时生效。" />
     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
       <Button Content="刷新列表" Command="{Binding RefreshServersCommand}" />
       <TextBlock Classes="caption" VerticalAlignment="Center" Text="{Binding ServerStatus}" />

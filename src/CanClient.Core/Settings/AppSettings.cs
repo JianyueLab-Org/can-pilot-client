@@ -74,6 +74,17 @@ public sealed class AppSettings
     [JsonPropertyName("fsd_port")] public int FsdPortNumber { get; set; } = FsdPort;
     [JsonPropertyName("connect_fsd")] public bool ConnectFsd { get; set; } = true;
     [JsonPropertyName("connect_voice")] public bool ConnectVoice { get; set; } = true;
+    /// <summary>
+    /// 连 FSD 和语音时优先用的 IP 版本：Auto / IPv4 / IPv6。存字符串而不是枚举：手改出一个认不出的值时
+    /// 只这一项回到自动，不会让整份配置反序列化失败、全部回到默认。
+    /// </summary>
+    [JsonPropertyName("ip_preference")] public string IpPreferenceName { get; set; } = nameof(Net.IpPreference.Auto);
+    [JsonIgnore]
+    public Net.IpPreference IpPreference
+    {
+        get => Net.DualStack.Parse(IpPreferenceName);
+        set => IpPreferenceName = value.ToString();
+    }
     // 模拟器接入选择和 X-Plane 原生交通插件。
     [JsonPropertyName("simulator_connection")] public string SimulatorConnection { get; set; } = "Auto";
     [JsonPropertyName("show_all_simulators")] public bool ShowAllSimulators { get; set; }

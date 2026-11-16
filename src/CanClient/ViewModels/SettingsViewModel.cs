@@ -111,6 +111,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         FsdPort = _settings.FsdPortNumber;
         VoiceHost = _settings.MumbleHostName;
         VoicePort = _settings.MumblePortNumber;
+        IpPreferenceIndex = (int)_settings.IpPreference;
         SetServerChoices(null);
         SimulatorConnection = PlatformSupport.EffectiveSimulatorConnection(_settings.SimulatorConnection);
         ShowAllSimulators = _settings.ShowAllSimulators;
@@ -242,6 +243,7 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
         _settings.FsdPortNumber = FsdPort;
         _settings.MumbleHostName = VoiceHost.Trim();
         _settings.MumblePortNumber = VoicePort;
+        _settings.IpPreference = Enum.IsDefined((IpPreference)IpPreferenceIndex) ? (IpPreference)IpPreferenceIndex : IpPreference.Auto;
         // macOS / Linux 只有 X-Plane，不改写配置里的接入模式，配置拷回 Windows 还是原样
         if (!_controller.IsConnected && SupportsMsfs) _settings.SimulatorConnection = SimulatorConnection;
         _settings.ShowAllSimulators = ShowAllSimulators;
@@ -519,6 +521,8 @@ public sealed partial class SettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private int _fsdPort;
     [ObservableProperty] private string _voiceHost = "";
     [ObservableProperty] private int _voicePort;
+    /// <summary>下拉框的序号，和 <see cref="IpPreference"/> 的值一一对应：0 自动、1 IPv4、2 IPv6。</summary>
+    [ObservableProperty] private int _ipPreferenceIndex;
     [ObservableProperty] private IReadOnlyList<ServerChoice> _fsdServers = [];
     [ObservableProperty] private IReadOnlyList<ServerChoice> _voiceServers = [];
     [ObservableProperty] private ServerChoice? _selectedFsdServer;
