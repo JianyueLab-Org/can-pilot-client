@@ -121,8 +121,12 @@ public class XPlaneTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var subscription = await server.ReceiveAsync(timeout.Token);
         Assert.Equal(413, subscription.Buffer.Length);
-        await server.SendAsync(Rref((0, 31), (1, 121), (2, 1000)), subscription.RemoteEndPoint, timeout.Token);
-        while (!sim.Connected) await Task.Delay(20, timeout.Token);
+        // 像真 X-Plane 一样持续回包：机位只算 3 秒内新鲜，只发一包时 CI 机器一卡就过期，永远等不到连上
+        while (!sim.Connected)
+        {
+            await server.SendAsync(Rref((0, 31), (1, 121), (2, 1000)), subscription.RemoteEndPoint, timeout.Token);
+            await Task.Delay(100, timeout.Token);
+        }
         Assert.Equal(CanClient.Core.ModelMatching.SimulatorType.XPlane, sim.Simulator);
         Assert.True(sim.TuneCom(2, 125.4));
         UdpReceiveResult command;
