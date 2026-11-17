@@ -43,7 +43,7 @@ macOS / Linux 同样是自包含单文件发布。macOS 输出仅支持 Apple Si
   - macOS：键盘 / 鼠标侧键用 CoreGraphics 读取，需要在“系统设置 → 隐私与安全性 → 输入监控”允许 CAN Pilot（首次使用时会请求，授权后重启客户端）；摇杆走 IOKit HID，无需额外权限。
   - Linux：直接读 evdev（`/dev/input/event*`），X11 和 Wayland 下都全局有效。键盘和鼠标节点一般只有 `input` 组可读，需执行 `sudo usermod -aG input $USER` 后重新登录；读不到时日志里会提示。
 - **文件位置**：Linux 与 Windows 一样，设置和 `logs/` 放在程序目录；程序目录不可写时两者都放 `$XDG_DATA_HOME/CAN Pilot Client`（默认 `~/.local/share/CAN Pilot Client`）。macOS 的 `.app` 包里不写文件，设置和日志在 `~/Library/Application Support/CAN Pilot Client`。
-- **Linux 安装**：Release 提供通用的 `linux-x64.tar.gz`，适用于 glibc 发行版，解压后直接运行 `can-pilot/can-pilot`。`desktop/` 里的菜单文件和图标可拷到 `~/.local/share/applications`、`~/.local/share/icons/hicolor/64x64/apps`。运行依赖：ICU、fontconfig、X11 基础库（Wayland 下经 XWayland）、一种中文字体：
+- **Linux 安装**：Release 提供通用的 `linux-x64.tar.gz`，适用于 glibc 发行版，解压后直接运行 `can-pilot/can-pilot`。`desktop/` 里的菜单文件和图标可拷到 `~/.local/share/applications`、`~/.local/share/icons/hicolor/256x256/apps`。运行依赖：ICU、fontconfig、X11 基础库（Wayland 下经 XWayland）、一种中文字体：
   - Debian / Ubuntu：`sudo apt install libicu-dev fontconfig libx11-6 libice6 libsm6 libxi6 libxcursor1 libxrandr2 fonts-noto-cjk`
   - Fedora：`sudo dnf install libicu fontconfig libX11 libICE libSM libXi libXcursor libXrandr google-noto-sans-cjk-fonts`
   - 不支持 musl 发行版（如 Alpine）。

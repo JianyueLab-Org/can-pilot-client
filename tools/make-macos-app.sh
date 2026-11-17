@@ -37,7 +37,7 @@ for f in "$arm64"/*; do
   esac
 done
 
-# 图标：从 app.ico 同源的 64 px PNG 放大生成（Dock 上略糊，但比没有强）
+# 图标：从 app.ico 同源的 256 px PNG 放大生成（Dock 上略糊，但比没有强）
 # 中间目录是 mktemp -d 出来的，成功或失败都要收走，别在 /tmp 里越攒越多
 scratch=$(mktemp -d)
 trap 'rm -rf -- "$scratch"' EXIT

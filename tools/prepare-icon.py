@@ -1,4 +1,4 @@
-"""Create the UI bitmap from the same CAN ICO used by the executable."""
+"""Create the UI bitmap from the largest frame of the ICO used by the executable."""
 from pathlib import Path
 from PIL import Image
 
