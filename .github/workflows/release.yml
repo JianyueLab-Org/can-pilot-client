@@ -240,10 +240,14 @@ jobs:
           sudo apt-get install -y -qq xvfb >/dev/null
           smoke="${RUNNER_TEMP}/smoke"
           cp -R "dist/${OUTPUT}" "$smoke"
+          # 程序的退出码在 xvfb-run 里面自己记下来：xvfb-run 收尾删临时目录偶尔失败会把退出码换成 5，
+          # 那和程序本身没关系，不能拿来判断启动是否成功
           set +e
-          (cd "$smoke" && xvfb-run -a timeout 30 ./can-pilot)
-          code=$?
+          (cd "$smoke" && xvfb-run -a sh -c 'timeout 30 ./can-pilot; echo $? > .smoke-exit')
+          xvfb=$?
           set -e
+          code=$(cat "$smoke/.smoke-exit" 2>/dev/null || echo "$xvfb")
+          [ "$xvfb" -eq "$code" ] || echo "::warning::xvfb-run 自身返回 ${xvfb}，按程序退出码 ${code} 判断"
           cat "$smoke"/logs/*.log || true
           if [ "$code" -ne 124 ]; then
             echo "::error::Linux 版启动后 30 秒内就退出了（退出码 ${code}），见上面的日志"
